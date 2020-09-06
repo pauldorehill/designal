@@ -1,0 +1,5 @@
+error: You have removed and renamed a field
+ --> $DIR/remove_rename.rs:5:16
+  |
+5 |     #[designal(remove, rename = "Yum")]
+  |                ^^^^^^

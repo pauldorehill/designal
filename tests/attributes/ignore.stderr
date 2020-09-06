@@ -1,0 +1,35 @@
+error: Ignore is not valid at the container level
+ --> $DIR/ignore.rs:4:12
+  |
+4 | #[designal(ignore)]
+  |            ^^^^^^
+
+error: You should only ignore once
+  --> $DIR/ignore.rs:10:16
+   |
+10 |     #[designal(ignore)]
+   |                ^^^^^^
+
+error: You are ignoring designal on this field, but have added other attributes
+  --> $DIR/ignore.rs:15:16
+   |
+15 |     #[designal(ignore)]
+   |                ^^^^^^
+
+error: You are ignoring designal on this field, but have added other attributes
+  --> $DIR/ignore.rs:22:16
+   |
+22 |     #[designal(ignore)]
+   |                ^^^^^^
+
+error: You are ignoring designal on this field, but have added other attributes
+  --> $DIR/ignore.rs:29:16
+   |
+29 |     #[designal(ignore)]
+   |                ^^^^^^
+
+error: You are ignoring designal on this field, but have added other attributes
+  --> $DIR/ignore.rs:36:16
+   |
+36 |     #[designal(ignore)]
+   |                ^^^^^^

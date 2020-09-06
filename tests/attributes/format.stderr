@@ -1,0 +1,11 @@
+error: expected identifier or literal
+ --> $DIR/format.rs:4:32
+  |
+4 | #[designal(rename = "NewBean", ,)]
+  |                                ^
+
+error: Unrecognized attribute identifier option: snozzcumber
+ --> $DIR/format.rs:8:12
+  |
+8 | #[designal(snozzcumber)]
+  |            ^^^^^^^^^^^

@@ -1,0 +1,77 @@
+error: rename must be formated like `rename = "Value"
+ --> $DIR/renamers.rs:4:12
+  |
+4 | #[designal(rename)]
+  |            ^^^^^^
+
+error: rename can't be empty
+ --> $DIR/renamers.rs:7:21
+  |
+7 | #[designal(rename = "")]
+  |                     ^^
+
+error: Only string literals are allowed
+  --> $DIR/renamers.rs:11:21
+   |
+11 | #[designal(rename = 2)]
+   |                     ^
+
+error: expected literal
+  --> $DIR/renamers.rs:15:21
+   |
+15 | #[designal(rename = HumanBean)]
+   |                     ^^^^^^^^^
+
+error: You should only rename once
+  --> $DIR/renamers.rs:20:12
+   |
+20 | #[designal(rename = "HumanBean2")]
+   |            ^^^^^^
+
+error: You should only rename once
+  --> $DIR/renamers.rs:24:35
+   |
+24 | #[designal(rename = "HumanBean1", rename = "HumanBean2")]
+   |                                   ^^^^^^
+
+error: You cannot rename a unnamed field
+  --> $DIR/renamers.rs:28:30
+   |
+28 | struct HumanBean6(#[designal(rename = "flavour")] String);
+   |                              ^^^^^^
+
+error: Can only do one of rename, add_prefix, add_postfix, remove_start, remove_end
+  --> $DIR/renamers.rs:31:34
+   |
+31 | #[designal(rename = "HumanBean", add_prefix = "Snozz")]
+   |                                  ^^^^^^^^^^
+
+error: Can only do one of rename, add_prefix, add_postfix, remove_start, remove_end
+  --> $DIR/renamers.rs:35:56
+   |
+35 | #[designal(rename = "HumanBean", add_prefix = "Snozz", add_postfix = "Snozz")]
+   |                                                        ^^^^^^^^^^^
+
+error: Can only do one of rename, add_prefix, add_postfix, remove_start, remove_end
+  --> $DIR/renamers.rs:39:79
+   |
+39 | #[designal(rename = "HumanBean", add_prefix = "Snozz", add_postfix = "Snozz", remove_start = "Snozz")]
+   |                                                                               ^^^^^^^^^^^^
+
+error: Can only do one of rename, add_prefix, add_postfix, remove_start, remove_end
+  --> $DIR/renamers.rs:43:103
+   |
+43 | #[designal(rename = "HumanBean", add_prefix = "Snozz", add_postfix = "Snozz", remove_start = "Snozz", remove_end = "Snozz")]
+   |                                                                                                       ^^^^^^^^^^
+
+error: struct HumanBean11 does not start with Snozz
+  --> $DIR/renamers.rs:47:12
+   |
+47 | #[designal(remove_start = "Snozz")]
+   |            ^^^^^^^^^^^^
+
+error: struct HumanBean12 does not end with Snozz
+  --> $DIR/renamers.rs:51:12
+   |
+51 | #[designal(remove_end = "Snozz")]
+   |            ^^^^^^^^^^

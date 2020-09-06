@@ -1,0 +1,17 @@
+error: Enums are not yet supported
+ --> $DIR/unsupported.rs:4:6
+  |
+4 | enum HumanBean {}
+  |      ^^^^^^^^^
+
+error: Unions are not yet supported
+ --> $DIR/unsupported.rs:7:7
+  |
+7 | union HumanBean1 {
+  |       ^^^^^^^^^^
+
+error: Unit structs are not supported
+  --> $DIR/unsupported.rs:12:8
+   |
+12 | struct HumanBean2;
+   |        ^^^^^^^^^^
