@@ -5,8 +5,8 @@ use crate::attributes::*;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    AngleBracketedGenericArguments, Attribute, DataStruct, DeriveInput, Error, Field, Generics,
-    Ident, Path, PathArguments, Result, Visibility,
+    AngleBracketedGenericArguments, Error, Field, Generics, Ident, ItemStruct, Path,
+    PathArguments, Result, Visibility, NestedMeta,
 };
 
 const MUTABLE_VEC: &str = "MutableVec";
@@ -16,13 +16,13 @@ const MUTABLE_LOWER: &str = "mutable";
 
 fn remover(
     angle_args: &AngleBracketedGenericArguments,
-    atts: &AttributeOptions,
+    attrs: &AttributeOptions,
 ) -> Result<TokenStream> {
     let args = &angle_args.args;
     match args.first() {
         Some(arg) => match arg {
             syn::GenericArgument::Type(t) => match t {
-                syn::Type::Path(p) => remove_wrappers(&p.path, atts),
+                syn::Type::Path(p) => remove_wrappers(&p.path, attrs),
                 _ => Ok(quote! {#args}),
             },
             _ => Ok(quote! {#args}),
@@ -31,21 +31,21 @@ fn remover(
     }
 }
 
-fn remove_wrappers(path: &Path, atts: &AttributeOptions) -> Result<TokenStream> {
+fn remove_wrappers(path: &Path, attrs: &AttributeOptions) -> Result<TokenStream> {
     match path.segments.last() {
         Some(s) => {
             if s.ident == MUTABLE
-                || (s.ident == "Rc" && atts.keep_rc.is_none())
-                || (s.ident == "Arc" && atts.keep_arc.is_none())
+                || (s.ident == "Rc" && attrs.keep_rc.is_none())
+                || (s.ident == "Arc" && attrs.keep_arc.is_none())
             {
                 match &s.arguments {
-                    PathArguments::AngleBracketed(angle_args) => remover(angle_args, atts),
+                    PathArguments::AngleBracketed(angle_args) => remover(angle_args, attrs),
                     _ => unreachable!(),
                 }
             } else if s.ident == MUTABLE_VEC {
                 match &s.arguments {
                     PathArguments::AngleBracketed(angle_args) => {
-                        remover(angle_args, atts).map(|args| quote! { Vec<#args> })
+                        remover(angle_args, attrs).map(|args| quote! { Vec<#args> })
                     }
                     _ => unreachable!(),
                 }
@@ -59,19 +59,20 @@ fn remove_wrappers(path: &Path, atts: &AttributeOptions) -> Result<TokenStream> 
 
 fn clean_field(
     field: &Field,
-    atts: &AttributeOptions,
+    attrs: &AttributeOptions,
     final_type: Option<Result<TokenStream>>,
 ) -> Result<TokenStream> {
-    let new_atts = &atts.others_to_keep;
+    // TODO: Do I need to add back the atts?
+    let atts = field.attrs.iter().filter(|a|AttributeOptions::is_not_designal_att(a));
     let vis = &field.vis;
     let default_ty = &field.ty;
     let ty = final_type.unwrap_or_else(|| Ok(quote! { #default_ty }))?;
-    match (&field.ident, &atts.renamer) {
+    match (&field.ident, &attrs.renamer) {
         (Some(current), Some(renamer)) => renamer
             .make_new_name(&current)
-            .map(|name| quote! { #(#new_atts)* #vis #name: #ty }),
-        (Some(name), None) => Ok(quote! { #(#new_atts)* #vis #name: #ty }),
-        _ => Ok(quote! { #(#new_atts)* #vis #ty }),
+            .map(|name| quote! { #(#atts)* #vis #name: #ty }),
+        (Some(name), None) => Ok(quote! { #(#atts)* #vis #name: #ty }),
+        _ => Ok(quote! { #(#atts)* #vis #ty }),
     }
 }
 
@@ -80,20 +81,20 @@ fn map_field(
     naming: Naming,
     struct_level_atts: &AttributeOptions,
 ) -> Option<Result<TokenStream>> {
-    let atts = match AttributeOptions::new(&field.attrs, AttributeLocation::Field(naming)) {
-        Ok(atts) => atts.add_struct_level_to_field_level(struct_level_atts),
+    let attrs = match AttributeOptions::new(AttributeLocation::Field(naming, &field.attrs)) {
+        Ok(attrs) => attrs.add_struct_level_to_field_level(struct_level_atts),
         Err(e) => return Some(Err(e)),
     };
-    if atts.remove.is_some() {
+    if attrs.remove.is_some() {
         None
-    } else if atts.ignore.is_some() {
-        Some(clean_field(&field, &atts, None))
+    } else if attrs.ignore.is_some() {
+        Some(clean_field(&field, &attrs, None))
     } else {
         let tokens = if let syn::Type::Path(p) = &field.ty {
-            let final_type = Some(remove_wrappers(&p.path, &atts));
-            clean_field(&field, &atts, final_type)
+            let final_type = Some(remove_wrappers(&p.path, &attrs));
+            clean_field(&field, &attrs, final_type)
         } else {
-            clean_field(&field, &atts, None)
+            clean_field(&field, &attrs, None)
         };
         Some(tokens)
     }
@@ -115,21 +116,19 @@ impl Naming {
 }
 
 //TODO: Tidy up these?
-pub(crate) struct ReturnType<'a> {
+pub(crate) struct ReturnStruct<'a> {
     vis: &'a Visibility,
     name: Ident,
     fields: TokenStream,
-    attributes: &'a Vec<&'a Attribute>,
     derives: Option<TokenStream>,
     naming: Naming,
     generics: &'a Generics,
 }
 
-impl<'a> ReturnType<'a> {
+impl<'a> ReturnStruct<'a> {
     fn new(
         name: Ident,
-        data_struct: &DataStruct,
-        input: &'a DeriveInput,
+        data_struct: &'a ItemStruct,
         naming: Naming,
         struct_level_atts: &'a AttributeOptions,
     ) -> Result<Self> {
@@ -144,13 +143,12 @@ impl<'a> ReturnType<'a> {
             quote! { #[derive(#(#xs),*)] }
         });
         let s = Self {
-            vis: &input.vis,
+            vis: &data_struct.vis,
             name,
             fields,
-            attributes: &struct_level_atts.others_to_keep,
             derives,
             naming,
-            generics: &input.generics,
+            generics: &data_struct.generics,
         };
         Ok(s)
     }
@@ -192,7 +190,6 @@ impl<'a> ReturnType<'a> {
         let name = &self.name;
         let fields = &self.fields;
         let vis = self.vis;
-        let atts = self.attributes;
         let derives = &self.derives;
         let generics = self.generics;
         let wher = &self.generics.where_clause;
@@ -201,7 +198,6 @@ impl<'a> ReturnType<'a> {
             Naming::Named => {
                 quote! {
                     #derives
-                    #(#atts)*
                     #vis struct #name #generics
                     #wher {
                         #fields
@@ -211,7 +207,6 @@ impl<'a> ReturnType<'a> {
             Naming::Unnamed => {
                 quote! {
                     #derives
-                    #(#atts)*
                     #vis struct #name #generics (#fields)
                     #wher;
                 }
@@ -220,30 +215,19 @@ impl<'a> ReturnType<'a> {
         Ok(tokens)
     }
 
-    pub(crate) fn parse_input(input: DeriveInput) -> Result<TokenStream> {
-        let struct_atts = AttributeOptions::new(&input.attrs, AttributeLocation::Struct)?;
+    pub(crate) fn parse_input(input: ItemStruct, attrs: Vec<NestedMeta>) -> Result<TokenStream> {
+        // TODO: No need to parse these attrs? Since they are separate to this marcro so need to just parse through
+        let struct_atts = AttributeOptions::new(AttributeLocation::Struct(attrs))?;
         let name = Self::make_name(&input.ident, &struct_atts)?;
-        let ty = match &input.data {
-            syn::Data::Struct(s) => match &s.fields {
-                syn::Fields::Named(_) => {
-                    ReturnType::new(name, s, &input, Naming::Named, &struct_atts)
-                }
-                syn::Fields::Unnamed(_) => {
-                    ReturnType::new(name, s, &input, Naming::Unnamed, &struct_atts)
-                }
-                syn::Fields::Unit => Err(Error::new(
-                    input.ident.span(),
-                    "Unit structs are not supported",
-                )),
-            },
 
-            syn::Data::Enum(_) => Err(Error::new(
+        let ty = match &input.fields {
+            syn::Fields::Named(_) => ReturnStruct::new(name, &input, Naming::Named, &struct_atts),
+            syn::Fields::Unnamed(_) => {
+                ReturnStruct::new(name, &input, Naming::Unnamed, &struct_atts)
+            }
+            syn::Fields::Unit => Err(Error::new(
                 input.ident.span(),
-                "Enums are not yet supported",
-            )),
-            syn::Data::Union(_) => Err(Error::new(
-                input.ident.span(),
-                "Unions are not yet supported",
+                "Unit structs are not supported",
             )),
         };
         ty?.build()

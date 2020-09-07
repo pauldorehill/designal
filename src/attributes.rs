@@ -1,7 +1,10 @@
+#![allow(dead_code)]
+#![allow(unused_variables)] //TODO: Remove
 use crate::builder::Naming;
 use proc_macro2::Span;
 use quote::format_ident;
 use syn::{Attribute, Error, Ident, Meta, MetaNameValue, NestedMeta, Result};
+
 
 // TODO: Add attribute filter
 // TODO: Add attribute adder
@@ -175,9 +178,18 @@ impl Renamer {
     }
 }
 
-pub(crate) enum AttributeLocation {
-    Struct,
-    Field(Naming),
+pub(crate) enum AttributeLocation<'a> {
+    Struct(Vec<NestedMeta>),
+    Field(Naming, &'a Vec<Attribute>),
+}
+
+impl<'a> AttributeLocation<'a> {
+    fn get_nested_meta(&self) -> Result<Vec<AttributeType>> {
+        match self {
+            AttributeLocation::Struct(attrs) => attrs.iter().map(AttributeType::new).collect(),
+            AttributeLocation::Field(_, attrs) => Ok(Vec::new()), //TODO: Write this
+        }
+    }
 }
 
 pub(crate) struct AttributeOptions<'a> {
@@ -186,7 +198,7 @@ pub(crate) struct AttributeOptions<'a> {
     pub(crate) renamer: Option<Renamer>,
     pub(crate) keep_rc: Option<Span>,
     pub(crate) keep_arc: Option<Span>,
-    pub(crate) others_to_keep: Vec<&'a Attribute>,
+    pub(crate) others_to_keep: Option<Vec<&'a Attribute>>,
     pub(crate) derives: Option<Vec<Ident>>,
 }
 
@@ -210,6 +222,11 @@ impl<'a> AttributeOptions<'a> {
         att.path.is_ident("designal")
     }
 
+    pub(crate) fn is_not_designal_att(att: &Attribute) -> bool {
+        !Self::is_designal_att(att)
+    }
+
+    // TODO: I think these are only from a field
     fn get_designal_meta(att: &Attribute) -> Vec<Result<AttributeType>> {
         match att.parse_meta() {
             Ok(meta) => {
@@ -246,9 +263,9 @@ impl<'a> AttributeOptions<'a> {
     }
 
     // TODO: Check struct derived against field? eg. if keep_rc etc.
-    fn validate(&self, att_location: AttributeLocation) -> Result<()> {
-        match att_location {
-            AttributeLocation::Struct => {
+    fn validate(&self, attr_loc: AttributeLocation) -> Result<()> {
+        match attr_loc {
+            AttributeLocation::Struct(_) => {
                 if let Some(span) = self.remove {
                     return Err(Error::new(
                         span,
@@ -263,7 +280,7 @@ impl<'a> AttributeOptions<'a> {
                     Ok(())
                 }
             }
-            AttributeLocation::Field(naming) => {
+            AttributeLocation::Field(naming, _) => {
                 let all_but_ignore = self.remove.is_some()
                     || self.renamer.is_some()
                     || self.keep_rc.is_some()
@@ -291,8 +308,8 @@ impl<'a> AttributeOptions<'a> {
         }
     }
 
-    pub(crate) fn new(atts: &'a Vec<Attribute>, att_location: AttributeLocation) -> Result<Self> {
-        let (designal_atts, others_to_keep) = Self::get_designal_attributes(atts)?;
+    //TODO: Since using attribute macro, I think I can likely change this ?
+    pub(crate) fn new(attr_loc: AttributeLocation) -> Result<Self> {
         let mut ignore: Option<Span> = None;
         let mut remove: Option<Span> = None;
         let mut rename: Option<Renamer> = None;
@@ -326,8 +343,10 @@ impl<'a> AttributeOptions<'a> {
                 }
             };
 
-        for att in designal_atts {
-            match att {
+
+
+        for attr in attr_loc.get_nested_meta()? {
+            match attr {
                 AttributeType::Ignore(span) => set_span(&mut ignore, "ignore", &span)?,
                 AttributeType::Remove(span) => set_span(&mut remove, "remove", &span)?,
                 AttributeType::Rename(name, span) => {
@@ -383,16 +402,16 @@ impl<'a> AttributeOptions<'a> {
             }
         };
 
-        let atts = Self {
+        let attrs = Self {
             ignore,
             remove,
             renamer,
             keep_rc,
             keep_arc,
-            others_to_keep,
             derives,
+            others_to_keep: None, //TODO
         };
-        atts.validate(att_location)?;
-        Ok(atts)
+        attrs.validate(attr_loc)?;
+        Ok(attrs)
     }
 }

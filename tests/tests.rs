@@ -1,30 +1,46 @@
 #![allow(dead_code)]
-// #![allow(unused_imports)]
-// #![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+// #![feature(custom_inner_attributes)]
+// #![custom_attributes("notyet")]
+// https://github.com/rust-lang/rust/issues/54726
 
-use designal::Designal;
+use designal::designal;
 use futures_signals::signal::Mutable;
 use futures_signals::signal_vec::MutableVec;
 use std::{rc::Rc, sync::Arc};
 use trybuild;
 // TODO: test derive::derive etc
+// TODO: Check keeping existing atts
 
-#[test]
-fn test_should_fail() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/attributes/*.rs");
-    t.compile_fail("tests/types/*.rs");
-}
+// #[test]
+// fn test_should_fail() {
+//     let t = trybuild::TestCases::new();
+//     t.compile_fail("tests/attributes/*.rs");
+//     t.compile_fail("tests/types/*.rs");
+// }
 
-fn basic() {
-    #[derive(Designal)]
+fn unnamed() {
+    #[designal]
     struct HumanBean();
-
     let _ = HumanBeanDesig();
 }
 
+fn unnamed_struct_fields() {
+    #[designal]
+    struct HumanBean(String, i8);
+    let _ = HumanBeanDesig(String::new(), 8);
+}
+
 fn named() {
-    #[derive(Designal)]
+    #[designal]
+    struct HumanBean {}
+
+    let _ = HumanBeanDesig {};
+}
+
+fn named_fields() {
+    #[designal]
     struct HumanBean {
         taste: String,
     }
@@ -34,85 +50,75 @@ fn named() {
     };
 }
 
-fn unnamed_struct_fields() {
-    #[derive(Designal)]
-    struct HumanBean(String, i8);
-    let _ = HumanBeanDesig(String::new(), 8);
-}
-
 fn rename_struct() {
-    #[derive(Designal)]
     #[designal(rename = "NewBean")]
+    #[derive(Debug, Eq, PartialEq)]
     struct HumanBean();
     let _ = NewBean();
 }
 
 fn add_prefix_struct() {
-    #[derive(Designal)]
     #[designal(add_prefix = "Snozz")]
     struct HumanBean();
     let _ = SnozzHumanBean();
 }
 
 fn add_postfix_struct() {
-    #[derive(Designal)]
     #[designal(add_postfix = "Snozz")]
     struct HumanBean();
     let _ = HumanBeanSnozz();
 }
 
 fn remove_start_struct() {
-    #[derive(Designal)]
     #[designal(remove_start = "Human")]
     struct HumanBean();
     let _ = Bean();
 }
 
 fn remove_end_struct() {
-    #[derive(Designal)]
     #[designal(remove_end = "Bean")]
     struct HumanBean();
     let _ = Human();
 }
 
 fn auto_rename_mutable_struct_prefix() {
-    #[derive(Designal)]
+    #[designal]
     struct MutableHumanBean();
     let _ = HumanBean();
 }
 
 fn auto_rename_mutable_struct_postfix() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBeanMutable();
     let _ = HumanBean();
 }
 
 fn auto_rename_signal_struct_prefix() {
-    #[derive(Designal)]
+    #[designal]
     struct SignalHumanBean();
     let _ = HumanBean();
 }
 
 fn auto_rename_signal_struct_postfix() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBeanSignal();
     let _ = HumanBean();
 }
 
 fn auto_rename_struct_called_mutable() {
-    #[derive(Designal)]
+    #[designal]
     struct Mutable();
     let _ = MutableDesignal();
 }
 
 fn auto_rename_struct_called_signal() {
-    #[derive(Designal)]
+    #[designal]
     struct Signal();
     let _ = SignalDesignal();
 }
 
 fn rename_struct_named_field() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         #[designal(rename = "flavour")]
         taste: String,
@@ -122,34 +128,34 @@ fn rename_struct_named_field() {
     };
 }
 
-fn remove_struct_field() {
-    #[derive(Designal)]
-    struct HumanBean {
-        #[designal(remove)]
-        taste: Mutable<String>,
-    }
-    let _ = HumanBeanDesig {};
-}
+// fn remove_struct_field() {
+//     #[designal]
+//     struct HumanBean {
+//         #[designal(remove)]
+//         taste: Mutable<String>,
+//     }
+//     let _ = HumanBeanDesig {};
+// }
 
-fn ignore_struct_field() {
-    #[derive(Designal)]
-    struct HumanBean {
-        #[designal(ignore)]
-        taste: Mutable<String>,
-    }
-    let _ = HumanBeanDesig {
-        taste: Mutable::new(String::new()),
-    };
-}
+// fn ignore_struct_field() {
+//     #[designal]
+//     struct HumanBean {
+//         #[designal(ignore)]
+//         taste: Mutable<String>,
+//     }
+//     let _ = HumanBeanDesig {
+//         taste: Mutable::new(String::new()),
+//     };
+// }
 
-fn ignore_struct_unnamed_field() {
-    #[derive(Designal)]
-    struct HumanBean(#[designal(ignore)] Mutable<String>);
-    let _ = HumanBeanDesig(Mutable::new(String::new()));
-}
+// fn ignore_struct_unnamed_field() {
+//     #[designal]
+//     struct HumanBean(#[designal(ignore)] Mutable<String>);
+//     let _ = HumanBeanDesig(Mutable::new(String::new()));
+// }
 
 fn remove_mutable() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Mutable<String>,
     }
@@ -158,7 +164,7 @@ fn remove_mutable() {
     };
 }
 fn remove_full_path_mutable() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: futures_signals::signal::Mutable<String>,
     }
@@ -168,7 +174,7 @@ fn remove_full_path_mutable() {
 }
 
 fn remove_rc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Rc<String>,
     }
@@ -177,32 +183,32 @@ fn remove_rc() {
     };
 }
 
-fn keep_rc_field() {
-    #[derive(Designal)]
-    struct HumanBean {
-        #[designal(keep_rc)]
-        taste: Rc<String>,
-    }
-    let _ = HumanBeanDesig {
-        taste: Rc::new(String::new()),
-    };
-}
+// fn keep_rc_field() {
+//     #[designal]
+//     struct HumanBean {
+//         #[designal(keep_rc)]
+//         taste: Rc<String>,
+//     }
+//     let _ = HumanBeanDesig {
+//         taste: Rc::new(String::new()),
+//     };
+// }
 
-fn keep_rc_struct() {
-    #[derive(Designal)]
-    #[designal(keep_rc)]
-    struct HumanBean {
-        taste: Rc<String>,
-        crunch: Rc<String>,
-    }
-    let _ = HumanBeanDesig {
-        taste: Rc::new(String::new()),
-        crunch: Rc::new(String::new()),
-    };
-}
+// fn keep_rc_struct() {
+//     #[designal]
+//     #[designal(keep_rc)]
+//     struct HumanBean {
+//         taste: Rc<String>,
+//         crunch: Rc<String>,
+//     }
+//     let _ = HumanBeanDesig {
+//         taste: Rc::new(String::new()),
+//         crunch: Rc::new(String::new()),
+//     };
+// }
 
 fn remove_mutable_rc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Mutable<Rc<String>>,
     }
@@ -212,7 +218,7 @@ fn remove_mutable_rc() {
 }
 
 fn remove_rc_mutable_rc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Rc<Mutable<Rc<String>>>,
     }
@@ -222,7 +228,7 @@ fn remove_rc_mutable_rc() {
 }
 
 fn remove_mutable_mutable() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Mutable<Mutable<String>>,
     }
@@ -232,7 +238,7 @@ fn remove_mutable_mutable() {
 }
 
 fn remove_rc_rc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Rc<Rc<String>>,
     }
@@ -242,7 +248,7 @@ fn remove_rc_rc() {
 }
 
 fn remove_arc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Arc<String>,
     }
@@ -252,7 +258,7 @@ fn remove_arc() {
 }
 
 fn keep_arc_struct() {
-    #[derive(Designal)]
+
     #[designal(keep_arc)]
     struct HumanBean {
         taste: Arc<String>,
@@ -264,19 +270,19 @@ fn keep_arc_struct() {
     };
 }
 
-fn keep_arc_field() {
-    #[derive(Designal)]
-    struct HumanBean {
-        #[designal(keep_arc)]
-        taste: Arc<String>,
-    }
-    let _ = HumanBeanDesig {
-        taste: Arc::new(String::new()),
-    };
-}
+// fn keep_arc_field() {
+//     #[designal]
+//     struct HumanBean {
+//         #[designal(keep_arc)]
+//         taste: Arc<String>,
+//     }
+//     let _ = HumanBeanDesig {
+//         taste: Arc::new(String::new()),
+//     };
+// }
 
 fn remove_mutable_arc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Mutable<Arc<String>>,
     }
@@ -286,7 +292,7 @@ fn remove_mutable_arc() {
 }
 
 fn remove_arc_mutable() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Arc<Mutable<String>>,
     }
@@ -296,7 +302,7 @@ fn remove_arc_mutable() {
 }
 
 fn remove_mutable_vec() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: MutableVec<String>,
     }
@@ -304,7 +310,7 @@ fn remove_mutable_vec() {
 }
 
 fn remove_mutable_vec_rc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: MutableVec<Rc<String>>,
     }
@@ -314,7 +320,7 @@ fn remove_mutable_vec_rc() {
 }
 
 fn remove_mutable_rc_vec() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Rc<MutableVec<String>>,
     }
@@ -322,7 +328,7 @@ fn remove_mutable_rc_vec() {
 }
 
 fn remove_mutable_vec_arc() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: MutableVec<Arc<String>>,
     }
@@ -330,7 +336,7 @@ fn remove_mutable_vec_arc() {
 }
 
 fn remove_mutable_arc_vec() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: Arc<MutableVec<String>>,
     }
@@ -338,7 +344,7 @@ fn remove_mutable_arc_vec() {
 }
 
 fn remove_mutable_vec_full_path() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBean {
         taste: futures_signals::signal_vec::MutableVec<String>,
     }
@@ -348,12 +354,12 @@ fn remove_mutable_vec_full_path() {
 mod upper {
     use inner::{HumanBean, HumanBean2};
     mod inner {
-        use designal::Designal;
-        #[derive(Designal)]
+        use designal::designal;
+        #[designal]
         pub struct HumanBeanMutable {
             pub taste: u8,
         }
-        #[derive(Designal)]
+        #[designal]
         pub struct HumanBean2Mutable(pub u8);
     }
 
@@ -364,7 +370,7 @@ mod upper {
 }
 
 fn derive_single() {
-    #[derive(Designal)]
+
     #[designal(derive = "Debug")]
     struct HumanBean();
 
@@ -373,22 +379,8 @@ fn derive_single() {
     println!("{:?}", r)
 }
 
-fn derive_vec_attributes() {
-    #[derive(Designal)]
-    #[designal(derive = "Debug")]
-    #[designal(derive = "Eq")]
-    #[designal(derive = "PartialEq")]
-    struct HumanBean();
-
-    let r1 = HumanBeanDesig();
-    let r2 = HumanBeanDesig();
-
-    println!("{:?}", r2);
-    let _ = r1 == r2;
-}
-
 fn derive_vec_attributes_inline() {
-    #[derive(Designal)]
+
     #[designal(derive = "Debug", derive = "PartialEq")]
     pub struct HumanBeanMutable {
         taste: u8,
@@ -396,7 +388,7 @@ fn derive_vec_attributes_inline() {
 }
 
 fn derive_vec_attributes_csv() {
-    #[derive(Designal)]
+
     #[designal(derive = "Debug, PartialEq")]
     pub struct HumanBeanMutable {
         taste: u8,
@@ -404,7 +396,7 @@ fn derive_vec_attributes_csv() {
 }
 
 fn generics() {
-    #[derive(Designal)]
+    #[designal]
     pub struct HumanBeanMutable<'a, T>
     where
         T: Copy,
@@ -416,7 +408,7 @@ fn generics() {
 }
 
 fn generics_unnamed() {
-    #[derive(Designal)]
+    #[designal]
     struct HumanBeanMutable<'a, T>(&'a T)
     where
         T: Copy;
