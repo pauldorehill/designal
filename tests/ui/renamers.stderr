@@ -1,0 +1,77 @@
+error: You need to provide a way to rename the struct like `rename = "NoSignals"
+ --> $DIR/renamers.rs:4:12
+  |
+4 | #[designal(rename)]
+  |            ^^^^^^
+
+error: rename can't be empty
+ --> $DIR/renamers.rs:7:21
+  |
+7 | #[designal(rename = "")]
+  |                     ^^
+
+error: Only string literals are allowed
+  --> $DIR/renamers.rs:11:21
+   |
+11 | #[designal(rename = 2)]
+   |                     ^
+
+error: expected literal
+  --> $DIR/renamers.rs:15:21
+   |
+15 | #[designal(rename = HumanBean)]
+   |                     ^^^^^^^^^
+
+error: You should only rename once
+  --> $DIR/renamers.rs:20:12
+   |
+20 | #[designal(rename = "HumanBean2")]
+   |            ^^^^^^
+
+error: You should only rename once
+  --> $DIR/renamers.rs:24:35
+   |
+24 | #[designal(rename = "HumanBean1", rename = "HumanBean2")]
+   |                                   ^^^^^^
+
+error: You cannot rename a unnamed field
+  --> $DIR/renamers.rs:29:30
+   |
+29 | struct HumanBean6(#[designal(rename = "flavour")] String);
+   |                              ^^^^^^
+
+error: You can only do one of rename, add_start, add_end, trim_start, trim_end
+  --> $DIR/renamers.rs:32:34
+   |
+32 | #[designal(rename = "HumanBean", add_start = "Snozz")]
+   |                                  ^^^^^^^^^
+
+error: You can only do one of rename, add_start, add_end, trim_start, trim_end
+  --> $DIR/renamers.rs:36:55
+   |
+36 | #[designal(rename = "HumanBean", add_start = "Snozz", add_end = "Snozz")]
+   |                                                       ^^^^^^^
+
+error: You can only do one of rename, add_start, add_end, trim_start, trim_end
+  --> $DIR/renamers.rs:44:5
+   |
+44 |     trim_start = "Snozz"
+   |     ^^^^^^^^^^
+
+error: You can only do one of rename, add_start, add_end, trim_start, trim_end
+  --> $DIR/renamers.rs:54:5
+   |
+54 |     trim_end = "Snozz"
+   |     ^^^^^^^^
+
+error: struct HumanBean11 does not start with Snozz
+  --> $DIR/renamers.rs:59:12
+   |
+59 | #[designal(trim_start = "Snozz")]
+   |            ^^^^^^^^^^
+
+error: struct HumanBean12 does not end with Snozz
+  --> $DIR/renamers.rs:63:12
+   |
+63 | #[designal(trim_end = "Snozz")]
+   |            ^^^^^^^^

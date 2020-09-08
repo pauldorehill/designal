@@ -3,54 +3,99 @@
 
 use crate::attributes::*;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::{
     AngleBracketedGenericArguments, Attribute, DataStruct, DeriveInput, Error, Field, Generics,
     Ident, Path, PathArguments, Result, Visibility,
 };
 
-const MUTABLE_VEC: &str = "MutableVec";
-const MUTABLE: &str = "Mutable";
-const SIGNAL_LOWER: &str = "signal";
-const MUTABLE_LOWER: &str = "mutable";
-
-fn remover(
+fn make_final_type(
     angle_args: &AngleBracketedGenericArguments,
     atts: &AttributeOptions,
+    naming: Naming,
 ) -> Result<TokenStream> {
     let args = &angle_args.args;
-    match args.first() {
-        Some(arg) => match arg {
+    // Rc, Arc, Mutable, MutableVec
+    if args.len() == 1 {
+        if let Some(span) = atts.hashmap {
+            return Err(Error::new(
+                span,
+                "Use of `hashmap` on a non `MutableBTreeMap<K, V>`",
+            ));
+        }
+        match args.first().unwrap() {
             syn::GenericArgument::Type(t) => match t {
-                syn::Type::Path(p) => remove_wrappers(&p.path, atts),
+                syn::Type::Path(p) => remove_type_wrappers(&p.path, atts, naming),
                 _ => Ok(quote! {#args}),
             },
             _ => Ok(quote! {#args}),
-        },
-        None => unreachable!(),
+        }
+    // MutableBtreeMap
+    } else if args.len() == 2 {
+        match (args.first().unwrap(), args.last().unwrap()) {
+            (syn::GenericArgument::Type(key), syn::GenericArgument::Type(value)) => {
+                match (key, value) {
+                    (syn::Type::Path(key), syn::Type::Path(value)) => {
+                        let key = remove_type_wrappers(&key.path, atts, naming)?;
+                        let value = remove_type_wrappers(&value.path, atts, naming)?;
+                        Ok(quote! {#key, #value})
+                    }
+                    _ => Ok(quote! {#args}),
+                }
+            }
+            _ => Ok(quote! {#args}),
+        }
+    } else {
+        unreachable!()
     }
 }
 
-fn remove_wrappers(path: &Path, atts: &AttributeOptions) -> Result<TokenStream> {
+fn remove_type_wrappers(
+    path: &Path,
+    atts: &AttributeOptions,
+    naming: Naming,
+) -> Result<TokenStream> {
     match path.segments.last() {
         Some(s) => {
-            if s.ident == MUTABLE
+            if s.ident == "Mutable"
                 || (s.ident == "Rc" && atts.keep_rc.is_none())
                 || (s.ident == "Arc" && atts.keep_arc.is_none())
             {
                 match &s.arguments {
-                    PathArguments::AngleBracketed(angle_args) => remover(angle_args, atts),
-                    _ => unreachable!(),
-                }
-            } else if s.ident == MUTABLE_VEC {
-                match &s.arguments {
                     PathArguments::AngleBracketed(angle_args) => {
-                        remover(angle_args, atts).map(|args| quote! { Vec<#args> })
+                        make_final_type(angle_args, atts, naming)
                     }
                     _ => unreachable!(),
                 }
+            } else if s.ident == "MutableVec" {
+                match &s.arguments {
+                    PathArguments::AngleBracketed(angle_args) => {
+                        make_final_type(angle_args, atts, naming).map(|args| quote! { Vec<#args> })
+                    }
+                    _ => unreachable!(),
+                }
+            } else if s.ident == "MutableBTreeMap" {
+                match &s.arguments {
+                    PathArguments::AngleBracketed(angle_args) => {
+                        make_final_type(angle_args, atts, naming)
+                            // I think for good hygine this must always be the full path
+                            .map(|args| match atts.hashmap {
+                                Some(_) => quote! { std::collections::HashMap<#args> },
+                                None => quote! { std::collections::BTreeMap<#args> },
+                            })
+                    }
+                    _ => unreachable!(),
+                }
+            // This is the final path it comes down after recursion
             } else {
-                Ok(quote! {#path})
+                match &atts.renamer {
+                    Some(renamer) => {
+                        let ty =
+                            renamer.make_new_name(&s.ident, AttributeLocation::Field(naming))?;
+                        Ok(quote! { #ty })
+                    }
+                    None => Ok(quote! { #path }),
+                }
             }
         }
         None => unreachable!(),
@@ -66,11 +111,8 @@ fn clean_field(
     let vis = &field.vis;
     let default_ty = &field.ty;
     let ty = final_type.unwrap_or_else(|| Ok(quote! { #default_ty }))?;
-    match (&field.ident, &atts.renamer) {
-        (Some(current), Some(renamer)) => renamer
-            .make_new_name(&current)
-            .map(|name| quote! { #(#new_atts)* #vis #name: #ty }),
-        (Some(name), None) => Ok(quote! { #(#new_atts)* #vis #name: #ty }),
+    match &field.ident {
+        Some(name) => Ok(quote! { #(#new_atts)* #vis #name: #ty }),
         _ => Ok(quote! { #(#new_atts)* #vis #ty }),
     }
 }
@@ -90,7 +132,7 @@ fn map_field(
         Some(clean_field(&field, &atts, None))
     } else {
         let tokens = if let syn::Type::Path(p) = &field.ty {
-            let final_type = Some(remove_wrappers(&p.path, &atts));
+            let final_type = Some(remove_type_wrappers(&p.path, &atts, naming));
             clean_field(&field, &atts, final_type)
         } else {
             clean_field(&field, &atts, None)
@@ -121,6 +163,7 @@ pub(crate) struct ReturnType<'a> {
     fields: TokenStream,
     attributes: &'a Vec<&'a Attribute>,
     derives: Option<TokenStream>,
+    cfg: Option<TokenStream>,
     naming: Naming,
     generics: &'a Generics,
 }
@@ -143,49 +186,22 @@ impl<'a> ReturnType<'a> {
         let derives = struct_level_atts.derives.as_ref().map(|xs| {
             quote! { #[derive(#(#xs),*)] }
         });
+        let cfg = struct_level_atts.cfg_feature.as_ref().map(|xs| {
+            xs.into_iter()
+                .map(|v| quote! { #[cfg(feature = #v)] })
+                .collect()
+        });
         let s = Self {
             vis: &input.vis,
             name,
             fields,
             attributes: &struct_level_atts.others_to_keep,
             derives,
+            cfg,
             naming,
             generics: &input.generics,
         };
         Ok(s)
-    }
-
-    fn make_name(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
-        if let Some(renamer) = &attr.renamer {
-            let name = renamer.make_new_name(&ident)?;
-            if name != ident.to_string() {
-                Ok(format_ident!("{}", name))
-            } else {
-                Err(Error::new(
-                    *renamer.span(),
-                    "Can't rename to the same name as the struct",
-                ))
-            }
-        } else {
-            let name = ident.to_string();
-            let lower_name = name.to_lowercase();
-            if lower_name == MUTABLE_LOWER || lower_name == SIGNAL_LOWER {
-                Ok(format_ident!("{}Designal", ident))
-            } else if lower_name.starts_with(MUTABLE_LOWER) {
-                Ok(format_ident!("{}", &name[MUTABLE.len()..]))
-            } else if lower_name.ends_with(MUTABLE_LOWER) {
-                Ok(format_ident!("{}", &name[..name.len() - MUTABLE.len()]))
-            } else if lower_name.starts_with(SIGNAL_LOWER) {
-                Ok(format_ident!("{}", &name[SIGNAL_LOWER.len()..]))
-            } else if lower_name.ends_with(SIGNAL_LOWER) {
-                Ok(format_ident!(
-                    "{}",
-                    &name[..name.len() - SIGNAL_LOWER.len()]
-                ))
-            } else {
-                Ok(format_ident!("{}Desig", ident))
-            }
-        }
     }
 
     fn build(&self) -> Result<TokenStream> {
@@ -194,12 +210,14 @@ impl<'a> ReturnType<'a> {
         let vis = self.vis;
         let atts = self.attributes;
         let derives = &self.derives;
+        let cfg = &self.cfg;
         let generics = self.generics;
         let wher = &self.generics.where_clause;
 
         let tokens = match self.naming {
             Naming::Named => {
                 quote! {
+                    #cfg
                     #derives
                     #(#atts)*
                     #vis struct #name #generics
@@ -210,6 +228,7 @@ impl<'a> ReturnType<'a> {
             }
             Naming::Unnamed => {
                 quote! {
+                    #cfg
                     #derives
                     #(#atts)*
                     #vis struct #name #generics (#fields)
@@ -220,9 +239,24 @@ impl<'a> ReturnType<'a> {
         Ok(tokens)
     }
 
+    fn rename(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
+        // Safe to unwrap since is checked in validation of attributes
+        let renamer = attr.renamer.as_ref().unwrap();
+        let name = renamer.make_new_name(&ident, AttributeLocation::Struct(ident.span()))?;
+        if name != ident.to_string() {
+            Ok(name)
+        } else {
+            Err(Error::new(
+                *renamer.span(),
+                "Can't rename to the same name as the struct",
+            ))
+        }
+    }
+
     pub(crate) fn parse_input(input: DeriveInput) -> Result<TokenStream> {
-        let struct_atts = AttributeOptions::new(&input.attrs, AttributeLocation::Struct)?;
-        let name = Self::make_name(&input.ident, &struct_atts)?;
+        let struct_atts =
+            AttributeOptions::new(&input.attrs, AttributeLocation::Struct(input.ident.span()))?;
+        let name = Self::rename(&input.ident, &struct_atts)?;
         let ty = match &input.data {
             syn::Data::Struct(s) => match &s.fields {
                 syn::Fields::Named(_) => {

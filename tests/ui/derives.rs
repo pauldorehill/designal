@@ -1,7 +1,8 @@
 use designal::Designal;
 
 #[derive(Designal)]
-pub struct HumanBeanMutable {
+#[designal(trim_end = "Bean")]
+pub struct HumanBean {
     #[designal(derive = "Debug")]
     taste: u8,
 }

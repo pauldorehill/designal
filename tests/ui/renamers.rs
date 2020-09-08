@@ -25,30 +25,42 @@ struct HumanBean4();
 struct HumanBean5();
 
 #[derive(Designal)]
+#[designal(trim_start = "Human")]
 struct HumanBean6(#[designal(rename = "flavour")] String);
 
 #[derive(Designal)]
-#[designal(rename = "HumanBean", add_prefix = "Snozz")]
+#[designal(rename = "HumanBean", add_start = "Snozz")]
 struct HumanBean7();
 
 #[derive(Designal)]
-#[designal(rename = "HumanBean", add_prefix = "Snozz", add_postfix = "Snozz")]
+#[designal(rename = "HumanBean", add_start = "Snozz", add_end = "Snozz")]
 struct HumanBean8();
 
 #[derive(Designal)]
-#[designal(rename = "HumanBean", add_prefix = "Snozz", add_postfix = "Snozz", remove_start = "Snozz")]
+#[designal(
+    rename = "HumanBean",
+    add_start = "Snozz",
+    add_end = "Snozz",
+    trim_start = "Snozz"
+)]
 struct HumanBean9();
 
 #[derive(Designal)]
-#[designal(rename = "HumanBean", add_prefix = "Snozz", add_postfix = "Snozz", remove_start = "Snozz", remove_end = "Snozz")]
+#[designal(
+    rename = "HumanBean",
+    add_start = "Snozz",
+    add_end = "Snozz",
+    trim_start = "Snozz",
+    trim_end = "Snozz"
+)]
 struct HumanBean10();
 
 #[derive(Designal)]
-#[designal(remove_start = "Snozz")]
+#[designal(trim_start = "Snozz")]
 struct HumanBean11();
 
 #[derive(Designal)]
-#[designal(remove_end = "Snozz")]
+#[designal(trim_end = "Snozz")]
 struct HumanBean12();
 
 fn main() {}

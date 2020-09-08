@@ -1,8 +1,9 @@
 use designal::Designal;
 
 #[derive(Designal)]
+#[designal(trim_start = "Human")]
 struct HumanBean {
-    #[designal(remove, rename = "Yum")]
+    #[designal(cfg_feature = "client")]
     taste: String,
 }
 

@@ -1,7 +1,7 @@
 use crate::builder::Naming;
 use proc_macro2::Span;
 use quote::format_ident;
-use syn::{Attribute, Error, Ident, Meta, MetaNameValue, NestedMeta, Result};
+use syn::{Attribute, Error, Ident, LitStr, Meta, MetaNameValue, NestedMeta, Result};
 
 // TODO: Add attribute filter
 // TODO: Add attribute adder
@@ -12,13 +12,15 @@ enum AttributeType {
     Ignore(Span),
     Remove(Span),
     Rename(String, Span),
-    AddPrefix(String, Span),
-    AddPostfix(String, Span),
-    RemoveStart(String, Span),
-    RemoveEnd(String, Span),
+    AddStart(String, Span),
+    AddEnd(String, Span),
+    TrimStart(String, Span),
+    TrimEnd(String, Span),
     KeepRc(Span),
     KeepArc(Span),
+    HashMap(Span),
     Derive(String, Span),
+    CfgFeature(String, Span),
 }
 
 impl AttributeType {
@@ -63,26 +65,20 @@ impl AttributeType {
                 let span = i.span();
                 match name.as_str() {
                     "rename" => make(&name, &span, &Self::Rename),
-                    "add_prefix" => make(&name, &span, &Self::AddPrefix),
-                    "add_postfix" => make(&name, &span, &Self::AddPostfix),
-                    "remove_start" => make(&name, &span, &Self::RemoveStart),
-                    "remove_end" => make(&name, &span, &Self::RemoveEnd),
+                    "add_start" => make(&name, &span, &Self::AddStart),
+                    "add_end" => make(&name, &span, &Self::AddEnd),
+                    "trim_start" => make(&name, &span, &Self::TrimStart),
+                    "trim_end" => make(&name, &span, &Self::TrimEnd),
                     "derive" => make(&name, &span, &Self::Derive),
+                    "cfg_feature" => make(&name, &span, &Self::CfgFeature),
                     _ => Self::err_invalid_ident(&i),
                 }
             }
-            None => Self::err_invalid_option(nv.path.segments[0].ident.span()), // TODO: test hitting this
+            None => Self::err_invalid_option(nv.path.segments[0].ident.span()),
         }
     }
 
     fn new(meta: &NestedMeta) -> Result<Self> {
-        let err_formating = |ident: &Ident| {
-            Err(Error::new(
-                ident.span(),
-                format!("{} must be formated like `{} = \"Value\"", ident, ident),
-            ))
-        };
-
         match meta {
             NestedMeta::Meta(meta) => match meta {
                 Meta::Path(path) => match path.get_ident() {
@@ -91,19 +87,21 @@ impl AttributeType {
                         "remove" => Ok(Self::Remove(i.span())),
                         "keep_rc" => Ok(Self::KeepRc(i.span())),
                         "keep_arc" => Ok(Self::KeepArc(i.span())),
-                        "rename" => err_formating(i),
-                        "prefix" => err_formating(i),
-                        "postfix" => err_formating(i),
-                        "derive" => Err(Error::new(
+                        "hashmap" => Ok(Self::HashMap(i.span())),
+                        // These check if it is a valid attribute, but not formated in the right way
+                        s if s == "rename" || s == "add_start" || s == "add_end" || s == "trim_start" || s == "trim_end" => {
+                            Err(Error::new(i.span(), format!("You need to provide a way to rename the struct like `{} = \"NoSignals\"", s)))
+                        }
+                        s if s ==  "derive" || s == "cfg" => Err(Error::new(
                             i.span(),
-                            format!("{} must be formated like `derive = Debug`", i),
+                            format!("{} must be formated like `{} = \"Your value\"`", i, s),
                         )),
                         _ => Self::err_invalid_ident(i),
                     },
-                    None => Self::err_invalid_option(path.segments[0].ident.span()), // TODO: test hitting this
+                    None => Self::err_invalid_option(path.segments[0].ident.span()),
                 },
                 Meta::NameValue(nv) => Self::make_from_meta_name(&nv),
-                Meta::List(l) => Err(Error::new(l.paren_token.span, "Unable to parse attributes")), // TODO: test hitting this
+                Meta::List(l) => Err(Error::new(l.paren_token.span, "Unable to parse attributes")),
             },
             NestedMeta::Lit(l) => {
                 let s = match l {
@@ -119,7 +117,7 @@ impl AttributeType {
                 Err(Error::new(
                     l.span(),
                     format!("Literals are not allowed. You passed in: {}", s),
-                )) // TODO: test hitting this
+                ))
             }
         }
     }
@@ -144,13 +142,19 @@ impl Renamer {
             | Renamer::RemoveEnd(_, s) => s,
         }
     }
-    pub fn make_new_name(&self, current: &Ident) -> Result<Ident> {
+
+    pub fn make_new_name(&self, current: &Ident, att_location: AttributeLocation) -> Result<Ident> {
         let err_naming = |span: &Span, name: &str, remove: &str, msg: &str| {
+            let location = match att_location {
+                AttributeLocation::Struct(_) => "struct",
+                AttributeLocation::Field(_) => "field",
+            };
             Err(Error::new(
                 *span,
-                format!("struct {} does not {} with {}", name, msg, remove),
+                format!("{} {} does not {} with {}", location, name, msg, remove),
             ))
         };
+
         match self {
             Renamer::Rename(new_str, _) => Ok(format_ident!("{}", new_str)),
             Renamer::AddPrefix(pre, _) => Ok(format_ident!("{}{}", pre, current)),
@@ -158,7 +162,7 @@ impl Renamer {
             Renamer::RemoveStart(remove, s) => {
                 let name = current.to_string();
                 if name.starts_with(remove) {
-                    Ok(format_ident!("{}", name[remove.len()..]))
+                    Ok(format_ident!("{}", name.trim_start_matches(remove)))
                 } else {
                     err_naming(s, &name, remove, "start")
                 }
@@ -166,7 +170,7 @@ impl Renamer {
             Renamer::RemoveEnd(remove, s) => {
                 let name = current.to_string();
                 if name.ends_with(remove) {
-                    Ok(format_ident!("{}", name[..remove.len() + 1]))
+                    Ok(format_ident!("{}", name.trim_end_matches(remove)))
                 } else {
                     err_naming(s, &name, remove, "end")
                 }
@@ -176,22 +180,24 @@ impl Renamer {
 }
 
 pub(crate) enum AttributeLocation {
-    Struct,
+    Struct(Span),
     Field(Naming),
 }
 
 pub(crate) struct AttributeOptions<'a> {
     pub(crate) remove: Option<Span>,
     pub(crate) ignore: Option<Span>,
-    pub(crate) renamer: Option<Renamer>,
+    pub(crate) renamer: Option<Renamer>, //TODO: Should this rather be an enum since now mandatory for a struct?
     pub(crate) keep_rc: Option<Span>,
     pub(crate) keep_arc: Option<Span>,
+    pub(crate) hashmap: Option<Span>,
     pub(crate) others_to_keep: Vec<&'a Attribute>,
     pub(crate) derives: Option<Vec<Ident>>,
+    pub(crate) cfg_feature: Option<Vec<LitStr>>, //TODO: Is this best?
 }
 
 impl<'a> AttributeOptions<'a> {
-    /// Only want to merge in keep_rc and keep_arc
+    /// Only want to merge in keep_rc, keep_arc, hashmap
     /// only update struct level when its Some
     pub(crate) fn add_struct_level_to_field_level(
         mut self,
@@ -203,6 +209,9 @@ impl<'a> AttributeOptions<'a> {
         if let Some(_) = struct_level.keep_arc {
             self.keep_arc = struct_level.keep_arc;
         }
+        if let Some(_) = struct_level.hashmap {
+            self.hashmap = struct_level.hashmap;
+        }
         self
     }
 
@@ -212,21 +221,18 @@ impl<'a> AttributeOptions<'a> {
 
     fn get_designal_meta(att: &Attribute) -> Vec<Result<AttributeType>> {
         match att.parse_meta() {
-            Ok(meta) => {
-                match meta {
-                    syn::Meta::List(meta_list) => {
-                        meta_list.nested.iter().map(AttributeType::new).collect()
-                    }
-                    // TODO: Test these paths
-                    Meta::Path(p) => vec![Err(Error::new(
-                        p.segments[0].ident.span(),
-                        "Unsupported attribute type",
-                    ))],
-                    Meta::NameValue(nv) => {
-                        vec![Err(Error::new(nv.lit.span(), "Unsupported attribute type"))]
-                    }
+            Ok(meta) => match meta {
+                syn::Meta::List(meta_list) => {
+                    meta_list.nested.iter().map(AttributeType::new).collect()
                 }
-            }
+                Meta::Path(p) => vec![Err(Error::new(
+                    p.segments[0].ident.span(),
+                    "Unsupported attribute type",
+                ))],
+                Meta::NameValue(nv) => {
+                    vec![Err(Error::new(nv.lit.span(), "Unsupported attribute type"))]
+                }
+            },
             Err(e) => vec![Err(e)],
         }
     }
@@ -248,7 +254,7 @@ impl<'a> AttributeOptions<'a> {
     // TODO: Check struct derived against field? eg. if keep_rc etc.
     fn validate(&self, att_location: AttributeLocation) -> Result<()> {
         match att_location {
-            AttributeLocation::Struct => {
+            AttributeLocation::Struct(struct_span) => {
                 if let Some(span) = self.remove {
                     return Err(Error::new(
                         span,
@@ -259,6 +265,8 @@ impl<'a> AttributeOptions<'a> {
                         span,
                         "Ignore is not valid at the container level",
                     ));
+                } else if self.renamer.is_none() {
+                    Err(Error::new(struct_span, "To use designal a struct must be renamed using rename, add_start, add_end, trim_start, trim_end"))
                 } else {
                     Ok(())
                 }
@@ -284,9 +292,36 @@ impl<'a> AttributeOptions<'a> {
                 } else if let Some(s) = &self.derives {
                     // Will only be some if there is somethihng
                     return Err(Error::new(s[0].span(), "You can't derive on a field"));
+                } else if let Some(s) = &self.cfg_feature {
+                    return Err(Error::new(
+                        s[0].span(),
+                        "You can't use cfg_feature on a field",
+                    ));
                 } else {
                     Ok(())
                 }
+            }
+        }
+    }
+
+    fn make_vec<T, F>(items: &mut Option<Vec<T>>, value: &str, span: Span, maker: F)
+    where
+        F: Fn(&str, Span) -> T,
+    {
+        match items {
+            Some(ref mut items) => {
+                // TODO: use syn::parse_str to give better error message
+                for name in value.split(",") {
+                    items.push(maker(&name.trim(), span));
+                }
+            }
+            None => {
+                *items = Some(
+                    value
+                        .split(",")
+                        .map(|name| maker(name.trim(), span))
+                        .collect(),
+                );
             }
         }
     }
@@ -296,13 +331,15 @@ impl<'a> AttributeOptions<'a> {
         let mut ignore: Option<Span> = None;
         let mut remove: Option<Span> = None;
         let mut rename: Option<Renamer> = None;
-        let mut add_postfix: Option<Renamer> = None;
-        let mut add_prefix: Option<Renamer> = None;
-        let mut remove_start: Option<Renamer> = None;
-        let mut remove_end: Option<Renamer> = None;
+        let mut add_end: Option<Renamer> = None;
+        let mut add_start: Option<Renamer> = None;
+        let mut trim_start: Option<Renamer> = None;
+        let mut trim_end: Option<Renamer> = None;
         let mut keep_rc: Option<Span> = None;
         let mut keep_arc: Option<Span> = None;
+        let mut hashmap: Option<Span> = None;
         let mut derives: Option<Vec<Ident>> = None;
+        let mut cfg_feature: Option<Vec<LitStr>> = None;
 
         let set_span = |existing: &mut Option<Span>, name: &str, new_value: &Span| match existing {
             Some(_) => Err(Error::new(
@@ -333,55 +370,46 @@ impl<'a> AttributeOptions<'a> {
                 AttributeType::Rename(name, span) => {
                     set_renamer(&mut rename, "rename", Renamer::Rename(name, span))?
                 }
-                AttributeType::AddPrefix(name, span) => {
-                    set_renamer(&mut add_prefix, "prefix", Renamer::AddPrefix(name, span))?
+                AttributeType::AddStart(name, span) => {
+                    set_renamer(&mut add_start, "prefix", Renamer::AddPrefix(name, span))?
                 }
-                AttributeType::AddPostfix(name, span) => {
-                    set_renamer(&mut add_postfix, "postfix", Renamer::AddPostfix(name, span))?
+                AttributeType::AddEnd(name, span) => {
+                    set_renamer(&mut add_end, "postfix", Renamer::AddPostfix(name, span))?
                 }
-                AttributeType::RemoveStart(name, span) => set_renamer(
-                    &mut remove_start,
-                    "remove_start",
+                AttributeType::TrimStart(name, span) => set_renamer(
+                    &mut trim_start,
+                    "trim_start",
                     Renamer::RemoveStart(name, span),
                 )?,
-                AttributeType::RemoveEnd(name, span) => set_renamer(
-                    &mut remove_end,
-                    "remove_end",
-                    Renamer::RemoveEnd(name, span),
-                )?,
+                AttributeType::TrimEnd(name, span) => {
+                    set_renamer(&mut trim_end, "trim_end", Renamer::RemoveEnd(name, span))?
+                }
                 AttributeType::KeepRc(span) => set_span(&mut keep_rc, "keep_rc", &span)?,
                 AttributeType::KeepArc(span) => set_span(&mut keep_arc, "keep_arc", &span)?,
-                AttributeType::Derive(name, span) => match derives {
-                    Some(ref mut traits) => {
-                        // TODO: use syn::parse_str to give better error message
-                        for name in name.split(",") {
-                            traits.push(Ident::new(&name.trim(), span));
-                        }
-                    }
-                    None => {
-                        derives = Some(
-                            name.split(",")
-                                .map(|name| Ident::new(name.trim(), span))
-                                .collect(),
-                        );
-                    }
-                },
+                AttributeType::HashMap(span) => set_span(&mut hashmap, "hashmap", &span)?,
+                AttributeType::Derive(value, span) => {
+                    Self::make_vec(&mut derives, &value, span, Ident::new)
+                }
+                AttributeType::CfgFeature(value, span) => {
+                    Self::make_vec(&mut cfg_feature, &value, span, LitStr::new)
+                }
             }
         }
-        let all = [rename, add_prefix, add_postfix, remove_start, remove_end];
+        let all = [rename, add_start, add_end, trim_start, trim_end];
         let renamer: Vec<&Renamer> = all.iter().filter_map(|v| v.as_ref()).collect();
 
-        let renamer = if renamer.len() == 1 {
-            Some(renamer[0].to_owned())
-        } else {
-            match renamer.last() {
-                Some(&v) => return Err(Error::new(
-                    *v.span(),
-                    "Can only do one of rename, add_prefix, add_postfix, remove_start, remove_end",
-                )),
-                None => None,
-            }
-        };
+        let renamer =
+            if renamer.len() == 1 {
+                Some(renamer[0].to_owned())
+            } else {
+                match renamer.last() {
+                    Some(&v) => return Err(Error::new(
+                        *v.span(),
+                        "You can only do one of rename, add_start, add_end, trim_start, trim_end",
+                    )),
+                    None => None,
+                }
+            };
 
         let atts = Self {
             ignore,
@@ -389,8 +417,10 @@ impl<'a> AttributeOptions<'a> {
             renamer,
             keep_rc,
             keep_arc,
+            hashmap,
             others_to_keep,
             derives,
+            cfg_feature,
         };
         atts.validate(att_location)?;
         Ok(atts)

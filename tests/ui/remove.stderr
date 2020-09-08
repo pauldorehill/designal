@@ -1,0 +1,17 @@
+error: Remove is not valid at the container level
+ --> $DIR/remove.rs:5:12
+  |
+5 | #[designal(remove)]
+  |            ^^^^^^
+
+error: You should only remove once
+  --> $DIR/remove.rs:12:16
+   |
+12 |     #[designal(remove)]
+   |                ^^^^^^
+
+error: You have removed and renamed a field
+  --> $DIR/remove.rs:19:16
+   |
+19 |     #[designal(remove, rename = "Yum")]
+   |                ^^^^^^

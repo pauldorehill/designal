@@ -1,11 +1,13 @@
 [package]
 name = "designal"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Paul Dorehill"]
 edition = "2018"
 description = "Procedural macro for use with futures-signals"
 license = "MIT"
 repository = "https://github.com/pauldorehill/designal"
+keywords = ["futures-signals", "mutable", "signals"]
+categories = ["data-structures"]
 
 [dependencies]
 proc-macro2 = "1.0"

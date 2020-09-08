@@ -1,0 +1,29 @@
+error: Enums are not yet supported
+ --> $DIR/unsupported.rs:7:6
+  |
+7 | enum HumanBean {}
+  |      ^^^^^^^^^
+
+error: Unions are not yet supported
+  --> $DIR/unsupported.rs:11:7
+   |
+11 | union HumanBean1 {
+   |       ^^^^^^^^^^
+
+error: Unit structs are not supported
+  --> $DIR/unsupported.rs:17:8
+   |
+17 | struct HumanBean2;
+   |        ^^^^^^^^^^
+
+error: Use of `hashmap` on a non `MutableBTreeMap<K, V>`
+  --> $DIR/unsupported.rs:22:16
+   |
+22 |     #[designal(hashmap)]
+   |                ^^^^^^^
+
+error: Use of `hashmap` on a non `MutableBTreeMap<K, V>`
+  --> $DIR/unsupported.rs:29:16
+   |
+29 |     #[designal(hashmap)]
+   |                ^^^^^^^
