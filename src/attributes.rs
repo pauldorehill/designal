@@ -5,7 +5,6 @@ use syn::{Attribute, Error, Ident, LitStr, Meta, MetaNameValue, NestedMeta, Resu
 
 // TODO: Add attribute filter
 // TODO: Add attribute adder
-// TODO: Add conditonal compliation to allow removing code etc
 // TODO: Add generics, where, lifetimes filter
 
 enum AttributeType {
@@ -24,6 +23,19 @@ enum AttributeType {
 }
 
 impl AttributeType {
+    const IGNORE: &'static str = "ignore";
+    const REMOVE: &'static str = "remove";
+    const RENAME: &'static str = "rename";
+    const ADD_START: &'static str = "add_start";
+    const ADD_END: &'static str = "add_end";
+    const TRIM_START: &'static str = "trim_start";
+    const TRIM_END: &'static str = "trim_end";
+    const KEEP_RC: &'static str = "keep_rc";
+    const KEEP_ARC: &'static str = "keep_arc";
+    const HASHMAP: &'static str = "hashmap";
+    const DERIVE: &'static str = "derive";
+    const CFG_FEATURE: &'static str = "cfg_feature";
+
     fn err_only_str(span: Span) -> Result<Self> {
         Err(Error::new(span, "Only string literals are allowed"))
     }
@@ -64,13 +76,13 @@ impl AttributeType {
                 let name = i.to_string();
                 let span = i.span();
                 match name.as_str() {
-                    "rename" => make(&name, &span, &Self::Rename),
-                    "add_start" => make(&name, &span, &Self::AddStart),
-                    "add_end" => make(&name, &span, &Self::AddEnd),
-                    "trim_start" => make(&name, &span, &Self::TrimStart),
-                    "trim_end" => make(&name, &span, &Self::TrimEnd),
-                    "derive" => make(&name, &span, &Self::Derive),
-                    "cfg_feature" => make(&name, &span, &Self::CfgFeature),
+                    Self::RENAME => make(&name, &span, &Self::Rename),
+                    Self::ADD_START => make(&name, &span, &Self::AddStart),
+                    Self::ADD_END => make(&name, &span, &Self::AddEnd),
+                    Self::TRIM_START => make(&name, &span, &Self::TrimStart),
+                    Self::TRIM_END => make(&name, &span, &Self::TrimEnd),
+                    Self::DERIVE => make(&name, &span, &Self::Derive),
+                    Self::CFG_FEATURE => make(&name, &span, &Self::CfgFeature),
                     _ => Self::err_invalid_ident(&i),
                 }
             }
@@ -83,16 +95,16 @@ impl AttributeType {
             NestedMeta::Meta(meta) => match meta {
                 Meta::Path(path) => match path.get_ident() {
                     Some(i) => match i.to_string().as_str() {
-                        "ignore" => Ok(Self::Ignore(i.span())),
-                        "remove" => Ok(Self::Remove(i.span())),
-                        "keep_rc" => Ok(Self::KeepRc(i.span())),
-                        "keep_arc" => Ok(Self::KeepArc(i.span())),
-                        "hashmap" => Ok(Self::HashMap(i.span())),
+                        Self::IGNORE => Ok(Self::Ignore(i.span())),
+                        Self::REMOVE => Ok(Self::Remove(i.span())),
+                        Self::KEEP_RC => Ok(Self::KeepRc(i.span())),
+                        Self::KEEP_ARC => Ok(Self::KeepArc(i.span())),
+                        Self::HASHMAP => Ok(Self::HashMap(i.span())),
                         // These check if it is a valid attribute, but not formated in the right way
-                        s if s == "rename" || s == "add_start" || s == "add_end" || s == "trim_start" || s == "trim_end" => {
+                        s if s == Self::RENAME || s == Self::ADD_START || s == Self::ADD_END || s == Self::TRIM_START || s == Self::TRIM_END => {
                             Err(Error::new(i.span(), format!("You need to provide a way to rename the struct like `{} = \"NoSignals\"", s)))
                         }
-                        s if s ==  "derive" || s == "cfg" => Err(Error::new(
+                        s if s ==  Self::DERIVE || s == Self::CFG_FEATURE => Err(Error::new(
                             i.span(),
                             format!("{} must be formated like `{} = \"Your value\"`", i, s),
                         )),
@@ -198,7 +210,8 @@ pub(crate) struct AttributeOptions<'a> {
 
 impl<'a> AttributeOptions<'a> {
     /// Only want to merge in keep_rc, keep_arc, hashmap
-    /// only update struct level when its Some
+    /// only update when the struct level is_some()
+    // TODO: Do nothing if already some?
     pub(crate) fn add_struct_level_to_field_level(
         mut self,
         struct_level: &AttributeOptions,
@@ -351,6 +364,7 @@ impl<'a> AttributeOptions<'a> {
                 Ok(())
             }
         };
+
         let set_renamer =
             |existing: &mut Option<Renamer>, name: &str, new_value: Renamer| match existing {
                 Some(_) => Err(Error::new(
@@ -395,12 +409,12 @@ impl<'a> AttributeOptions<'a> {
                 }
             }
         }
-        let all = [rename, add_start, add_end, trim_start, trim_end];
-        let renamer: Vec<&Renamer> = all.iter().filter_map(|v| v.as_ref()).collect();
 
-        let renamer =
+        let renamer = {
+            let all = [rename, add_start, add_end, trim_start, trim_end];
+            let renamer: Vec<&Renamer> = all.iter().filter_map(|v| v.as_ref()).collect();
             if renamer.len() == 1 {
-                Some(renamer[0].to_owned())
+                Some(renamer[0].to_owned()) //TODO: remove the clone?
             } else {
                 match renamer.last() {
                     Some(&v) => return Err(Error::new(
@@ -409,7 +423,8 @@ impl<'a> AttributeOptions<'a> {
                     )),
                     None => None,
                 }
-            };
+            }
+        };
 
         let atts = Self {
             ignore,

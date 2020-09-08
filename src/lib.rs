@@ -1,3 +1,5 @@
+//! # Designal
+//!
 //! This is a `Derive` macro that trys to help reduce code duplication between the front and backend
 //! when using [futures-signals](https:docs.rs/futures-signals) and [dominator](https:docs.rs/dominator/).
 //! When using signals you have to wrap a lot of types in a `Mutable`, `MutableVec`, and `MutableBTreeMap` which you likely don't want
@@ -42,6 +44,7 @@
 //!     editing: Mutable<bool>,
 //! }
 //! ```
+//!
 //! Generates this code:
 //! ```rust
 //! #[derive(Debug)]
@@ -61,56 +64,59 @@
 //!     name: (String, String),
 //! }
 //! ```
-//! # Container Attributes
+//!
+//! ## Container Attributes
 //! Every struct will need to have one of the renaming attributes `rename`, `add_start`, `add_end`, `trim_start`, or `trim_end`.
-//! ### `#[designal(rename = "NewName")]`
+//! #### `#[designal(rename = "NewName")]`
 //! Renames the struct completely.
-//! ### `#[designal(add_start = "Prefix")]`
+//! #### `#[designal(add_start = "Prefix")]`
 //! Renames the struct by adding the string to the start of the struct identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(add_end = "Postfix")]`
+//! #### `#[designal(add_end = "Postfix")]`
 //! Renames the struct by adding the string to the end of the struct identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(trim_start = "Prefix")]`
+//! #### `#[designal(trim_start = "Prefix")]`
 //! Renames the struct by removing the string from the start of the struct identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(trim_end = "Postfix")]`
+//! #### `#[designal(trim_end = "Postfix")]`
 //! Renames the struct by removing the string from the end of the struct identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(derive = "Debug")]`
+//! #### `#[designal(derive = "Debug")]`
 //! Adds a derive attribute to the generated struct.
-//! ### `#[designal(cfg_feature = "your_feature")]`
+//! #### `#[designal(cfg_feature = "your_feature")]`
 //! Adds a `#[cfg(feature = "your_feature")]` attribute to the generated struct.
-//! ### `#[designal(keep_rc)]`
+//! #### `#[designal(keep_rc)]`
 //! Keeps any `Rc`'s used on any fields.
-//! ### `#[designal(keep_arc)]`
+//! #### `#[designal(keep_arc)]`
 //! Keeps any `Arc`'s used on any fields.
-//! ### `#[designal(hashmap)]`
+//! #### `#[designal(hashmap)]`
 //! If any field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`.
 //!
-//! # Field Attributes
-//! ### `#[designal(rename = "NewName")]`
+//! ## Field Attributes
+//! #### `#[designal(rename = "NewName")]`
 //! Renames the field's declared type completely.
-//! ### `#[designal(add_start = "Prefix")]`
+//! #### `#[designal(add_start = "Prefix")]`
 //! Renames the field's declared type by adding the string to the start of the field's declared type identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(add_end = "Postfix")]`
+//! #### `#[designal(add_end = "Postfix")]`
 //! Renames the field's declared type by adding the string to the end of the field's declared type identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(trim_start = "Prefix")]`
+//! #### `#[designal(trim_start = "Prefix")]`
 //! Renames the field's declared type by removing the string from the start of the field's declared type identifier. Will throw a compile error if the
 //! string isn't found.
-//! ### `#[designal(trim_end = "Postfix")]`
+//! #### `#[designal(trim_end = "Postfix")]`
 //! Renames the field's declared type by removing the string from the end of the field's declared type identifier. Will throw a compile error if the
 //! string isn't found.
 //! Instructs the `designal` macro not to touch this field and leave it as it is.
-//! ### `#[designal(remove)]`
+//! #### `#[designal(remove)]`
 //! Removes the field from the generated struct.
-//! ### `#[designal(keep_rc)]`
+//! #### `#[designal(ignore)]`
+//!Tells `designal` to leave the field alone and return it as is.
+//! #### `#[designal(keep_rc)]`
 //! Keeps any `Rc`'s used in the field.
-//! ### `#[designal(keep_arc)]`
+//! #### `#[designal(keep_arc)]`
 //! Keeps any `Arc`'s used in the field.
-//! ### `#[designal(hashmap)]`
+//! #### `#[designal(hashmap)]`
 //! If the field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`.
 
 mod attributes;

@@ -1,5 +1,4 @@
 // TODO: Handle generics / lifetime / where if removed
-// TODO: Nested types? Add in a derive clause to get name etc?
 
 use crate::attributes::*;
 use proc_macro2::TokenStream;
@@ -113,7 +112,7 @@ fn clean_field(
     let ty = final_type.unwrap_or_else(|| Ok(quote! { #default_ty }))?;
     match &field.ident {
         Some(name) => Ok(quote! { #(#new_atts)* #vis #name: #ty }),
-        _ => Ok(quote! { #(#new_atts)* #vis #ty }),
+        None => Ok(quote! { #(#new_atts)* #vis #ty }),
     }
 }
 
@@ -176,13 +175,14 @@ impl<'a> ReturnType<'a> {
         naming: Naming,
         struct_level_atts: &'a AttributeOptions,
     ) -> Result<Self> {
-        let fields = data_struct
-            .fields
-            .iter()
-            .filter_map(|field| map_field(field, naming, &struct_level_atts))
-            .collect::<Result<Vec<TokenStream>>>()?;
-
-        let fields = quote! { #(#fields),* };
+        let fields = {
+            let xs = data_struct
+                .fields
+                .iter()
+                .filter_map(|field| map_field(field, naming, &struct_level_atts))
+                .collect::<Result<Vec<TokenStream>>>()?;
+            quote! { #(#xs),* }
+        };
         let derives = struct_level_atts.derives.as_ref().map(|xs| {
             quote! { #[derive(#(#xs),*)] }
         });
@@ -213,7 +213,6 @@ impl<'a> ReturnType<'a> {
         let cfg = &self.cfg;
         let generics = self.generics;
         let wher = &self.generics.where_clause;
-
         let tokens = match self.naming {
             Naming::Named => {
                 quote! {
@@ -270,7 +269,6 @@ impl<'a> ReturnType<'a> {
                     "Unit structs are not supported",
                 )),
             },
-
             syn::Data::Enum(_) => Err(Error::new(
                 input.ident.span(),
                 "Enums are not yet supported",
