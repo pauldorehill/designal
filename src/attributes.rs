@@ -19,7 +19,7 @@ enum AttributeType {
     KeepArc(Span),
     HashMap(Span),
     Derive(String, Span),
-    CfgFeature(String, Span),
+    CfgFeature(String, Span), //TODO: Is this worth it? Since will need the feature on the base struct to build the generated one? Easier to just not import?
 }
 
 impl AttributeType {
@@ -250,6 +250,18 @@ impl<'a> AttributeOptions<'a> {
         }
     }
 
+    // TODO: This will remove all cfg, should it only do feature?
+    // fn remove_cfg_feature(att: &&Attribute) -> bool {
+    //     match att.path.get_ident() {
+    //         Some(i) => i.to_string() != "cfg",
+    //         None => false,
+    //     }
+    // }
+    // let others: Vec<&Attribute> = others
+    //     .into_iter()
+    //     .filter(Self::remove_cfg_feature)
+    //     .collect();
+
     // TODO: Avoid iterating twice?
     fn get_designal_attributes(
         atts: &Vec<Attribute>,
@@ -279,6 +291,7 @@ impl<'a> AttributeOptions<'a> {
                         "Ignore is not valid at the container level",
                     ));
                 } else if self.renamer.is_none() {
+                    //TODO: Add example to error?
                     Err(Error::new(struct_span, "To use designal a struct must be renamed using rename, add_start, add_end, trim_start, trim_end"))
                 } else {
                     Ok(())

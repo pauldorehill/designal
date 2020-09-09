@@ -1,0 +1,15 @@
+[package]
+name = "shared"
+version = "0.1.0"
+authors = ["Paul Dorehill"]
+edition = "2018"
+
+[dependencies]
+designal = { path = "../../" }
+futures-signals = "0.3"
+dominator = "0.5"
+
+[features]
+default = []
+server = []
+client = []

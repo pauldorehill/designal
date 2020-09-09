@@ -1,0 +1,8 @@
+[package]
+name = "server"
+version = "0.1.0"
+authors = ["Paul Dorehill"]
+edition = "2018"
+
+[dependencies]
+shared = { path = "../shared", features = ["server"]}
