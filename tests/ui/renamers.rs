@@ -63,4 +63,20 @@ struct HumanBean11();
 #[designal(trim_end = "Snozz")]
 struct HumanBean12();
 
+struct TasteHuman;
+struct Taste;
+
+#[derive(Designal)]
+#[designal(trim_end_all = "Giant")]
+struct Giant1Giant {
+    #[designal(trim_end_all = "Human")]
+    taste: TasteHuman,
+}
+#[derive(Designal)]
+#[designal(trim_end_all = "Giant")]
+struct Giant2Giant {
+    #[designal(trim_start_all = "Human")]
+    taste: TasteHuman,
+}
+
 fn main() {}

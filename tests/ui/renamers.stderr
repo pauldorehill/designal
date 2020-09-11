@@ -75,3 +75,15 @@ error: struct HumanBean12 does not end with Snozz
    |
 63 | #[designal(trim_end = "Snozz")]
    |            ^^^^^^^^
+
+error: `trim_end_all` is only valid at the container level
+  --> $DIR/renamers.rs:72:16
+   |
+72 |     #[designal(trim_end_all = "Human")]
+   |                ^^^^^^^^^^^^
+
+error: `trim_start_all` is only valid at the container level
+  --> $DIR/renamers.rs:78:16
+   |
+78 |     #[designal(trim_start_all = "Human")]
+   |                ^^^^^^^^^^^^^^

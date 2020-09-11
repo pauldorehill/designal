@@ -60,6 +60,61 @@ fn trim_end_struct() {
     let _ = Human();
 }
 
+fn trim_start_struct_all() {
+    struct HumanTaste;
+    struct Taste;
+    struct HumanCrunch;
+    struct Crunch;
+
+    #[derive(Designal)]
+    #[designal(trim_start_all = "Human")]
+    struct HumanBean {
+        taste: HumanTaste,
+        crunch: HumanCrunch,
+    }
+    let _ = Bean {
+        taste: Taste,
+        crunch: Crunch,
+    };
+}
+
+fn trim_end_struct_all() {
+    struct TasteHuman;
+    struct Taste;
+    struct CrunchHuman;
+    struct Crunch;
+
+    #[derive(Designal)]
+    #[designal(trim_end_all = "Human")]
+    struct BeanHuman {
+        taste: TasteHuman,
+        crunch: CrunchHuman,
+    }
+    let _ = Bean {
+        taste: Taste,
+        crunch: Crunch,
+    };
+}
+
+fn trim_end_struct_all_rename_field() {
+    struct TasteHuman;
+    struct Taste;
+    struct CrunchBean;
+    struct Crunch;
+
+    #[derive(Designal)]
+    #[designal(trim_end_all = "Human")]
+    struct BeanHuman {
+        taste: TasteHuman,
+        #[designal(trim_end = "Bean")]
+        crunch: CrunchBean,
+    }
+    let _ = Bean {
+        taste: Taste,
+        crunch: Crunch,
+    };
+}
+
 fn trim_struct_named_field() {
     #[derive(Designal)]
     #[designal(trim_end = "Bean")]

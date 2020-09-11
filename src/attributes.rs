@@ -14,7 +14,9 @@ enum AttributeType {
     AddStart(String, Span),
     AddEnd(String, Span),
     TrimStart(String, Span),
+    TrimStartAll(String, Span),
     TrimEnd(String, Span),
+    TrimEndAll(String, Span),
     KeepRc(Span),
     KeepArc(Span),
     HashMap(Span),
@@ -29,7 +31,9 @@ impl AttributeType {
     const ADD_START: &'static str = "add_start";
     const ADD_END: &'static str = "add_end";
     const TRIM_START: &'static str = "trim_start";
+    const TRIM_START_ALL: &'static str = "trim_start_all";
     const TRIM_END: &'static str = "trim_end";
+    const TRIM_END_ALL: &'static str = "trim_end_all";
     const KEEP_RC: &'static str = "keep_rc";
     const KEEP_ARC: &'static str = "keep_arc";
     const HASHMAP: &'static str = "hashmap";
@@ -80,7 +84,9 @@ impl AttributeType {
                     Self::ADD_START => make(&name, &span, &Self::AddStart),
                     Self::ADD_END => make(&name, &span, &Self::AddEnd),
                     Self::TRIM_START => make(&name, &span, &Self::TrimStart),
+                    Self::TRIM_START_ALL => make(&name, &span, &Self::TrimStartAll),
                     Self::TRIM_END => make(&name, &span, &Self::TrimEnd),
+                    Self::TRIM_END_ALL => make(&name, &span, &Self::TrimEndAll),
                     Self::DERIVE => make(&name, &span, &Self::Derive),
                     Self::CFG_FEATURE => make(&name, &span, &Self::CfgFeature),
                     _ => Self::err_invalid_ident(&i),
@@ -138,20 +144,24 @@ impl AttributeType {
 #[derive(Clone)]
 pub(crate) enum Renamer {
     Rename(String, Span),
-    AddPrefix(String, Span),
-    AddPostfix(String, Span),
-    RemoveStart(String, Span),
-    RemoveEnd(String, Span),
+    AddStart(String, Span),
+    AddEnd(String, Span),
+    TrimStart(String, Span),
+    TrimStartAll(String, Span),
+    TrimEnd(String, Span),
+    TrimEndAll(String, Span),
 }
 
 impl Renamer {
     pub fn span(&self) -> &Span {
         match self {
             Renamer::Rename(_, s)
-            | Renamer::AddPrefix(_, s)
-            | Renamer::AddPostfix(_, s)
-            | Renamer::RemoveStart(_, s)
-            | Renamer::RemoveEnd(_, s) => s,
+            | Renamer::AddStart(_, s)
+            | Renamer::AddEnd(_, s)
+            | Renamer::TrimStart(_, s)
+            | Renamer::TrimEnd(_, s) => s,
+            Renamer::TrimStartAll(_, s) => s,
+            Renamer::TrimEndAll(_, s) => s,
         }
     }
 
@@ -168,10 +178,10 @@ impl Renamer {
         };
 
         match self {
-            Renamer::Rename(new_str, _) => Ok(format_ident!("{}", new_str)),
-            Renamer::AddPrefix(pre, _) => Ok(format_ident!("{}{}", pre, current)),
-            Renamer::AddPostfix(post, _) => Ok(format_ident!("{}{}", current, post)),
-            Renamer::RemoveStart(remove, s) => {
+            Self::Rename(new_str, _) => Ok(format_ident!("{}", new_str)),
+            Self::AddStart(pre, _) => Ok(format_ident!("{}{}", pre, current)),
+            Self::AddEnd(post, _) => Ok(format_ident!("{}{}", current, post)),
+            Self::TrimStart(remove, s) => {
                 let name = current.to_string();
                 if name.starts_with(remove) {
                     Ok(format_ident!("{}", name.trim_start_matches(remove)))
@@ -179,12 +189,52 @@ impl Renamer {
                     err_naming(s, &name, remove, "start")
                 }
             }
-            Renamer::RemoveEnd(remove, s) => {
+            Self::TrimStartAll(remove, s) => {
+                let name = current.to_string();
+                let id = || Ok(format_ident!("{}", name.trim_start_matches(remove)));
+                match att_location {
+                    AttributeLocation::Struct(_) => {
+                        if name.starts_with(remove) {
+                            id()
+                        } else {
+                            err_naming(s, &name, remove, "start")
+                        }
+                    }
+                    AttributeLocation::Field(_) => {
+                        if name.starts_with(remove) {
+                            id()
+                        } else {
+                            Ok(current.clone()) //Can this be changed to a ref?
+                        }
+                    }
+                }
+            }
+            Self::TrimEnd(remove, s) => {
                 let name = current.to_string();
                 if name.ends_with(remove) {
                     Ok(format_ident!("{}", name.trim_end_matches(remove)))
                 } else {
                     err_naming(s, &name, remove, "end")
+                }
+            }
+            Self::TrimEndAll(remove, s) => {
+                let name = current.to_string();
+                let id = || Ok(format_ident!("{}", name.trim_end_matches(remove)));
+                match att_location {
+                    AttributeLocation::Struct(_) => {
+                        if name.ends_with(remove) {
+                            id()
+                        } else {
+                            err_naming(s, &name, remove, "end")
+                        }
+                    }
+                    AttributeLocation::Field(_) => {
+                        if name.ends_with(remove) {
+                            id()
+                        } else {
+                            Ok(current.clone()) //Can this be changed to a ref?
+                        }
+                    }
                 }
             }
         }
@@ -209,7 +259,7 @@ pub(crate) struct AttributeOptions<'a> {
 }
 
 impl<'a> AttributeOptions<'a> {
-    /// Only want to merge in keep_rc, keep_arc, hashmap
+    /// Only want to merge in keep_rc, keep_arc, hashmap, trim_start_all, trim_end_all
     /// only update when the struct level is_some()
     // TODO: Do nothing if already some?
     pub(crate) fn add_struct_level_to_field_level(
@@ -225,6 +275,16 @@ impl<'a> AttributeOptions<'a> {
         if let Some(_) = struct_level.hashmap {
             self.hashmap = struct_level.hashmap;
         }
+        // Struct is only applied if the field has no renamer
+        if let (None, Some(renamer)) = (&self.renamer, &struct_level.renamer) {
+            match renamer {
+                Renamer::TrimStartAll(_, _) | Renamer::TrimEndAll(_, _) => {
+                    self.renamer = struct_level.renamer.clone();
+                }
+                _ => (),
+            }
+        }
+
         self
     }
 
@@ -315,6 +375,18 @@ impl<'a> AttributeOptions<'a> {
                         *renamer.span(),
                         "You cannot rename a unnamed field",
                     ));
+                } else if let Some(renamer) = &self.renamer {
+                    let e = |name: &str| {
+                        return Err(Error::new(
+                            *renamer.span(),
+                            format!("`trim_{}_all` is only valid at the container level", name),
+                        ));
+                    };
+                    match renamer {
+                        Renamer::TrimStartAll(_, _) => e("start"),
+                        Renamer::TrimEndAll(_, _) => e("end"),
+                        _ => Ok(()),
+                    }
                 } else if let Some(s) = &self.derives {
                     // Will only be some if there is somethihng
                     return Err(Error::new(s[0].span(), "You can't derive on a field"));
@@ -398,18 +470,26 @@ impl<'a> AttributeOptions<'a> {
                     set_renamer(&mut rename, "rename", Renamer::Rename(name, span))?
                 }
                 AttributeType::AddStart(name, span) => {
-                    set_renamer(&mut add_start, "prefix", Renamer::AddPrefix(name, span))?
+                    set_renamer(&mut add_start, "prefix", Renamer::AddStart(name, span))?
                 }
                 AttributeType::AddEnd(name, span) => {
-                    set_renamer(&mut add_end, "postfix", Renamer::AddPostfix(name, span))?
+                    set_renamer(&mut add_end, "postfix", Renamer::AddEnd(name, span))?
                 }
                 AttributeType::TrimStart(name, span) => set_renamer(
                     &mut trim_start,
                     "trim_start",
-                    Renamer::RemoveStart(name, span),
+                    Renamer::TrimStart(name, span),
+                )?,
+                AttributeType::TrimStartAll(name, span) => set_renamer(
+                    &mut trim_start,
+                    "trim_start",
+                    Renamer::TrimStartAll(name, span),
                 )?,
                 AttributeType::TrimEnd(name, span) => {
-                    set_renamer(&mut trim_end, "trim_end", Renamer::RemoveEnd(name, span))?
+                    set_renamer(&mut trim_end, "trim_end", Renamer::TrimEnd(name, span))?
+                }
+                AttributeType::TrimEndAll(name, span) => {
+                    set_renamer(&mut trim_end, "trim_end", Renamer::TrimEndAll(name, span))?
                 }
                 AttributeType::KeepRc(span) => set_span(&mut keep_rc, "keep_rc", &span)?,
                 AttributeType::KeepArc(span) => set_span(&mut keep_arc, "keep_arc", &span)?,

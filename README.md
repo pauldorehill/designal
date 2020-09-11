@@ -63,7 +63,7 @@ struct Human {
 ```
 
 ## Container Attributes
-Every struct will need to have one of the renaming attributes `rename`, `add_start`, `add_end`, `trim_start`, or `trim_end`.
+Every struct will need to have one of the renaming attributes `rename`, `add_start`, `add_end`, `trim_start`, `trim_start_all`, `trim_end`, or `trim_end_all`.
 #### `#[designal(rename = "NewName")]`
 Renames the struct completely.
 #### `#[designal(add_start = "Prefix")]`
@@ -72,8 +72,12 @@ Renames the struct by adding the string to the start of the struct identifier.
 Renames the struct by adding the string to the end of the struct identifier.
 #### `#[designal(trim_start = "Prefix")]`
 Renames the struct by removing the string from the start of the struct identifier.
+#### `#[designal(trim_start_all = "Prefix")]`
+Renames the struct by removing the string from the start of the struct identifier and also renames any field types that start with the same prefix. If a field doesn't start with the prefix it is left as is; if the field has its own renamer that will take precedence.
 #### `#[designal(trim_end = "Postfix")]`
 Renames the struct by removing the string from the end of the struct identifier.
+#### `#[designal(trim_end_all = "Postfix")]`
+Renames the struct by removing the string from the end of the struct identifier and also renames any field types that end with the same prefix. If a field doesn't end with the postfix it is left as is; if the field has its own renamer that will take precedence.
 #### `#[designal(derive = "Debug")]`
 Adds a derive attribute to the generated struct.
 #### `#[designal(cfg_feature = "your_feature")]`
