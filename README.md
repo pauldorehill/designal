@@ -6,6 +6,7 @@ When using signals you have to wrap a lot of types in a `Mutable`, `MutableVec`,
 - `Mutable<T>` -> `T`
 - `MutableVec<T>` -> `Vec<T>`
 - `MutableBTreeMap<K, V>` -> `BTreeMap<K, V>`
+- `MutableBTreeMap<K, ()>` -> `BTreeSet<K>`
 - `Rc<T>` -> `T`
 - `Arc<T>` -> `T`
 
@@ -87,7 +88,7 @@ Keeps any `Rc`'s used on any fields.
 #### `#[designal(keep_arc)]`
 Keeps any `Arc`'s used on any fields.
 #### `#[designal(hashmap)]`
-If any field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`.
+If any field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`. If any field is `MutableBTreeMap<K, ()>` returns it as a `HashSet<K>`.
 
 ## Field Attributes
 #### `#[designal(rename = "NewName")]`
@@ -109,4 +110,4 @@ Keeps any `Rc`'s used in the field.
 #### `#[designal(keep_arc)]`
 Keeps any `Arc`'s used in the field.
 #### `#[designal(hashmap)]`
-If the field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`.
+If the field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`. If it is `MutableBTreeMap<K, ()>` returns it as a `HashSet<K>`.

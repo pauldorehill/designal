@@ -4,7 +4,7 @@ use designal::Designal;
 use futures_signals::signal::Mutable;
 use futures_signals::signal_map::MutableBTreeMap;
 use futures_signals::signal_vec::MutableVec;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::{rc::Rc, sync::Arc};
 use trybuild;
 
@@ -376,6 +376,28 @@ fn trim_mutable_btreemap() {
     }
     let taste: BTreeMap<String, u32> = BTreeMap::new();
     let _ = Human { taste };
+}
+
+fn trim_mutable_btreemap_to_btreeset() {
+    #[derive(Designal)]
+    #[designal(trim_end = "Bean")]
+    struct HumanBean {
+        taste: MutableBTreeMap<String, ()>,
+    }
+    let taste: BTreeSet<String> = BTreeSet::new();
+    let _ = Human { taste };
+}
+
+fn trim_mutable_btreemap_to_hashset() {
+    #[derive(Designal)]
+    #[designal(trim_end = "Bean", hashmap)]
+    struct HumanBean {
+        taste: MutableBTreeMap<String, ()>,
+        crunch: MutableBTreeMap<u32, ()>,
+    }
+    let taste: HashSet<String> = HashSet::new();
+    let crunch: HashSet<u32> = HashSet::new();
+    let _ = Human { taste, crunch };
 }
 
 fn trim_mutable_btreemap_to_hashmap_struct() {

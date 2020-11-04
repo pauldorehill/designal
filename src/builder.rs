@@ -29,7 +29,7 @@ fn make_final_type(
             },
             _ => Ok(quote! {#args}),
         }
-    // MutableBtreeMap
+    // MutableBTreeMap
     } else if args.len() == 2 {
         match (args.first().unwrap(), args.last().unwrap()) {
             (syn::GenericArgument::Type(key), syn::GenericArgument::Type(value)) => {
@@ -37,7 +37,18 @@ fn make_final_type(
                     (syn::Type::Path(key), syn::Type::Path(value)) => {
                         let key = remove_type_wrappers(&key.path, atts, naming)?;
                         let value = remove_type_wrappers(&value.path, atts, naming)?;
-                        Ok(quote! {#key, #value})
+                        // I think for good hygine this must always be the full path
+                        match atts.hashmap {
+                            Some(_) => Ok(quote! { std::collections::HashMap<#key, #value> }),
+                            None => Ok(quote! { std::collections::BTreeMap<#key, #value> }),
+                        }
+                    }
+                    // This is when the value is unit -> Map to a HashSet / BTreeSet
+                    (syn::Type::Path(key), syn::Type::Tuple(value)) if value.elems.len() == 0 => {
+                        match atts.hashmap {
+                            Some(_) => Ok(quote! { std::collections::HashSet<#key> }),
+                            None => Ok(quote! { std::collections::BTreeSet<#key> }),
+                        }
                     }
                     _ => Ok(quote! {#args}),
                 }
@@ -77,11 +88,11 @@ fn remove_type_wrappers(
                 match &s.arguments {
                     PathArguments::AngleBracketed(angle_args) => {
                         make_final_type(angle_args, atts, naming)
-                            // I think for good hygine this must always be the full path
-                            .map(|args| match atts.hashmap {
-                                Some(_) => quote! { std::collections::HashMap<#args> },
-                                None => quote! { std::collections::BTreeMap<#args> },
-                            })
+                        // I think for good hygine this must always be the full path
+                        // .map(|args| match atts.hashmap {
+                        //     Some(_) => quote! { std::collections::HashMap<#args> },
+                        //     None => quote! { std::collections::BTreeMap<#args> },
+                        // })
                     }
                     _ => unreachable!(),
                 }
