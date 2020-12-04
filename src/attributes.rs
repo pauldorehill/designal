@@ -204,7 +204,7 @@ impl Renamer {
                         if name.starts_with(remove) {
                             id()
                         } else {
-                            Ok(current.clone()) //Can this be changed to a ref?
+                            Ok(current.clone()) //TODO: Can this be changed to a ref?
                         }
                     }
                 }
@@ -266,13 +266,13 @@ impl<'a> AttributeOptions<'a> {
         mut self,
         struct_level: &AttributeOptions,
     ) -> Self {
-        if let Some(_) = struct_level.keep_rc {
+        if struct_level.keep_rc.is_some() {
             self.keep_rc = struct_level.keep_rc;
         }
-        if let Some(_) = struct_level.keep_arc {
+        if struct_level.keep_arc.is_some() {
             self.keep_arc = struct_level.keep_arc;
         }
-        if let Some(_) = struct_level.hashmap {
+        if struct_level.hashmap.is_some() {
             self.hashmap = struct_level.hashmap;
         }
         // Struct is only applied if the field has no renamer
@@ -324,7 +324,7 @@ impl<'a> AttributeOptions<'a> {
 
     // TODO: Avoid iterating twice?
     fn get_designal_attributes(
-        atts: &Vec<Attribute>,
+        atts: &[Attribute],
     ) -> Result<(Vec<AttributeType>, Vec<&Attribute>)> {
         let (designal, others): (Vec<&Attribute>, Vec<&Attribute>) =
             atts.iter().partition(|att| Self::is_designal_att(att));
@@ -341,15 +341,15 @@ impl<'a> AttributeOptions<'a> {
         match att_location {
             AttributeLocation::Struct(struct_span) => {
                 if let Some(span) = self.remove {
-                    return Err(Error::new(
+                    Err(Error::new(
                         span,
                         "Remove is not valid at the container level",
-                    ));
+                    ))
                 } else if let Some(span) = self.ignore {
-                    return Err(Error::new(
+                    Err(Error::new(
                         span,
                         "Ignore is not valid at the container level",
-                    ));
+                    ))
                 } else if self.renamer.is_none() {
                     //TODO: Add example to error?
                     Err(Error::new(struct_span, "To use designal a struct must be renamed using rename, add_start, add_end, trim_start, trim_end"))
@@ -364,12 +364,12 @@ impl<'a> AttributeOptions<'a> {
                     || self.keep_arc.is_some();
 
                 if let (Some(remove), Some(_)) = (&self.remove, &self.renamer) {
-                    return Err(Error::new(*remove, "You have removed and renamed a field"));
+                    Err(Error::new(*remove, "You have removed and renamed a field"))
                 } else if self.ignore.is_some() && all_but_ignore {
-                    return Err(Error::new(
+                    Err(Error::new(
                         self.ignore.unwrap(),
                         "You are ignoring designal on this field, but have added other attributes",
-                    ));
+                    ))
                 } else if let (Some(renamer), true) = (&self.renamer, naming.is_unnamed()) {
                     return Err(Error::new(
                         *renamer.span(),
@@ -389,12 +389,12 @@ impl<'a> AttributeOptions<'a> {
                     }
                 } else if let Some(s) = &self.derives {
                     // Will only be some if there is somethihng
-                    return Err(Error::new(s[0].span(), "You can't derive on a field"));
+                    Err(Error::new(s[0].span(), "You can't derive on a field"))
                 } else if let Some(s) = &self.cfg_feature {
-                    return Err(Error::new(
+                    Err(Error::new(
                         s[0].span(),
                         "You can't use cfg_feature on a field",
-                    ));
+                    ))
                 } else {
                     Ok(())
                 }
@@ -409,14 +409,14 @@ impl<'a> AttributeOptions<'a> {
         match items {
             Some(ref mut items) => {
                 // TODO: use syn::parse_str to give better error message
-                for name in value.split(",") {
+                for name in value.split(',') {
                     items.push(maker(&name.trim(), span));
                 }
             }
             None => {
                 *items = Some(
                     value
-                        .split(",")
+                        .split(',')
                         .map(|name| maker(name.trim(), span))
                         .collect(),
                 );
@@ -424,7 +424,7 @@ impl<'a> AttributeOptions<'a> {
         }
     }
 
-    pub(crate) fn new(atts: &'a Vec<Attribute>, att_location: AttributeLocation) -> Result<Self> {
+    pub(crate) fn new(atts: &'a [Attribute], att_location: AttributeLocation) -> Result<Self> {
         let (designal_atts, others_to_keep) = Self::get_designal_attributes(atts)?;
         let mut ignore: Option<Span> = None;
         let mut remove: Option<Span> = None;

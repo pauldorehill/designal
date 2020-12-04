@@ -1,5 +1,4 @@
 // TODO: Handle generics / lifetime / where if removed
-
 use crate::attributes::*;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -44,7 +43,7 @@ fn make_final_type(
                         }
                     }
                     // This is when the value is unit -> Map to a HashSet / BTreeSet
-                    (syn::Type::Path(key), syn::Type::Tuple(value)) if value.elems.len() == 0 => {
+                    (syn::Type::Path(key), syn::Type::Tuple(value)) if value.elems.is_empty() => {
                         match atts.hashmap {
                             Some(_) => Ok(quote! { std::collections::HashSet<#key> }),
                             None => Ok(quote! { std::collections::BTreeSet<#key> }),
@@ -98,11 +97,21 @@ fn remove_type_wrappers(
                 }
             // This is the final path it comes down after recursion
             } else {
+                // Ok(quote! { #path })
                 match &atts.renamer {
                     Some(renamer) => {
-                        let ty =
+                        let final_ty_name =
                             renamer.make_new_name(&s.ident, AttributeLocation::Field(naming))?;
-                        Ok(quote! { #ty })
+
+                        // Need to add back any further types in <T> after the name. eg. Option<i32>
+                        let args = &s.arguments;
+                        Ok(quote! { #final_ty_name#args})
+                        // match &s.arguments {
+                        //     PathArguments::AngleBracketed(angle_args) => {
+                        //         Ok(quote! { #final_ty_name#angle_args})
+                        //     }
+                        //     _ => Ok(quote! { #final_ty_name }),
+                        // }
                     }
                     None => Ok(quote! { #path }),
                 }
@@ -197,11 +206,10 @@ impl<'a> ReturnType<'a> {
         let derives = struct_level_atts.derives.as_ref().map(|xs| {
             quote! { #[derive(#(#xs),*)] }
         });
-        let cfg = struct_level_atts.cfg_feature.as_ref().map(|xs| {
-            xs.into_iter()
-                .map(|v| quote! { #[cfg(feature = #v)] })
-                .collect()
-        });
+        let cfg = struct_level_atts
+            .cfg_feature
+            .as_ref()
+            .map(|xs| xs.iter().map(|v| quote! { #[cfg(feature = #v)] }).collect());
         let s = Self {
             vis: &input.vis,
             name,
@@ -253,7 +261,7 @@ impl<'a> ReturnType<'a> {
         // Safe to unwrap since is checked in validation of attributes
         let renamer = attr.renamer.as_ref().unwrap();
         let name = renamer.make_new_name(&ident, AttributeLocation::Struct(ident.span()))?;
-        if name != ident.to_string() {
+        if name != *ident {
             Ok(name)
         } else {
             Err(Error::new(

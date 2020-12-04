@@ -78,7 +78,7 @@ Renames the struct by removing the string from the start of the struct identifie
 #### `#[designal(trim_end = "Postfix")]`
 Renames the struct by removing the string from the end of the struct identifier.
 #### `#[designal(trim_end_all = "Postfix")]`
-Renames the struct by removing the string from the end of the struct identifier and also renames any field types that end with the same prefix. If a field doesn't end with the postfix it is left as is; if the field has its own renamer that will take precedence.
+Renames the struct by removing the string from the end of the struct identifier and also renames any field types that end with the same postfix. If a field doesn't end with the postfix it is left as is; if the field has its own renamer that will take precedence.
 #### `#[designal(derive = "Debug")]`
 Adds a derive attribute to the generated struct.
 #### `#[designal(cfg_feature = "your_feature")]`

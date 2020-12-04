@@ -6,7 +6,6 @@ use futures_signals::signal_map::MutableBTreeMap;
 use futures_signals::signal_vec::MutableVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::{rc::Rc, sync::Arc};
-use trybuild;
 
 #[test]
 fn test_should_fail() {
@@ -30,6 +29,24 @@ fn rename_struct_named_fields() {
     let _ = NewBean {
         taste: String::new(),
     };
+}
+
+fn struct_option_field() {
+    #[derive(Designal)]
+    #[designal(rename = "NewBean")]
+    struct HumanBean {
+        taste: Option<String>,
+    }
+    let _ = NewBean { taste: None };
+}
+
+fn struct_option_field_trim_end_all() {
+    #[derive(Designal)]
+    #[designal(trim_end_all = "Signal")]
+    struct HumanBeanSignal {
+        id: Option<i32>,
+    }
+    let _ = HumanBean { id: None };
 }
 
 fn add_start_struct() {
