@@ -21,6 +21,8 @@ enum AttributeType {
     KeepArc(Span),
     HashMap(Span),
     Derive(String, Span),
+    // Can't do for now since a derive macro doesn't have access to the derives?
+    // DeriveAll(Span),
     CfgFeature(String, Span), //TODO: Is this worth it? Since will need the feature on the base struct to build the generated one? Easier to just not import?
 }
 
@@ -38,6 +40,7 @@ impl AttributeType {
     const KEEP_ARC: &'static str = "keep_arc";
     const HASHMAP: &'static str = "hashmap";
     const DERIVE: &'static str = "derive";
+    // const DERIVE_ALL: &'static str = "derive_all";
     const CFG_FEATURE: &'static str = "cfg_feature";
 
     fn err_only_str(span: Span) -> Result<Self> {
@@ -89,6 +92,10 @@ impl AttributeType {
                     Self::TRIM_END_ALL => make(&name, &span, &Self::TrimEndAll),
                     Self::DERIVE => make(&name, &span, &Self::Derive),
                     Self::CFG_FEATURE => make(&name, &span, &Self::CfgFeature),
+                    // Self::DERIVE_ALL => Err(Error::new(
+                    //     i.span(),
+                    //     "Should be used #[designal(derive_all)` not `#[designal(derive_all = \"...\")`".to_string(),
+                    // )),
                     _ => Self::err_invalid_ident(&i),
                 }
             }
@@ -106,6 +113,7 @@ impl AttributeType {
                         Self::KEEP_RC => Ok(Self::KeepRc(i.span())),
                         Self::KEEP_ARC => Ok(Self::KeepArc(i.span())),
                         Self::HASHMAP => Ok(Self::HashMap(i.span())),
+                        // Self::DERIVE_ALL => Ok(Self::DeriveAll(i.span())),
                         // These check if it is a valid attribute, but not formated in the right way
                         s if s == Self::RENAME || s == Self::ADD_START || s == Self::ADD_END || s == Self::TRIM_START || s == Self::TRIM_END => {
                             Err(Error::new(i.span(), format!("You need to provide a way to rename the struct like `{} = \"NoSignals\"", s)))
@@ -254,7 +262,8 @@ pub(crate) struct AttributeOptions<'a> {
     pub(crate) keep_arc: Option<Span>,
     pub(crate) hashmap: Option<Span>,
     pub(crate) others_to_keep: Vec<&'a Attribute>,
-    pub(crate) derives: Option<Vec<Ident>>,
+    pub(crate) derives: Option<Vec<(String, Span)>>,
+    // pub(crate) derive_all: Option<Span>,
     pub(crate) cfg_feature: Option<Vec<LitStr>>, //TODO: Is this best?
 }
 
@@ -389,7 +398,7 @@ impl<'a> AttributeOptions<'a> {
                     }
                 } else if let Some(s) = &self.derives {
                     // Will only be some if there is somethihng
-                    Err(Error::new(s[0].span(), "You can't derive on a field"))
+                    Err(Error::new(s[0].1, "You can't derive on a field"))
                 } else if let Some(s) = &self.cfg_feature {
                     Err(Error::new(
                         s[0].span(),
@@ -436,13 +445,14 @@ impl<'a> AttributeOptions<'a> {
         let mut keep_rc: Option<Span> = None;
         let mut keep_arc: Option<Span> = None;
         let mut hashmap: Option<Span> = None;
-        let mut derives: Option<Vec<Ident>> = None;
+        let mut derives: Option<Vec<(String, Span)>> = None;
+        // let mut derive_all: Option<Span> = None;
         let mut cfg_feature: Option<Vec<LitStr>> = None;
 
         let set_span = |existing: &mut Option<Span>, name: &str, new_value: &Span| match existing {
             Some(_) => Err(Error::new(
                 *new_value,
-                format!("You should only {} once", name),
+                format!("You should only `{}` once", name),
             )),
             None => {
                 *existing = Some(*new_value);
@@ -495,8 +505,10 @@ impl<'a> AttributeOptions<'a> {
                 AttributeType::KeepArc(span) => set_span(&mut keep_arc, "keep_arc", &span)?,
                 AttributeType::HashMap(span) => set_span(&mut hashmap, "hashmap", &span)?,
                 AttributeType::Derive(value, span) => {
-                    Self::make_vec(&mut derives, &value, span, Ident::new)
+                    // This is a quick fix to allow parseing of fully qualified paths eg. std::default::Default
+                    Self::make_vec(&mut derives, &value, span, |n, v| (n.to_string(), v))
                 }
+                // AttributeType::DeriveAll(span) => set_span(&mut derive_all, "derive_all", &span)?,
                 AttributeType::CfgFeature(value, span) => {
                     Self::make_vec(&mut cfg_feature, &value, span, LitStr::new)
                 }
@@ -528,6 +540,7 @@ impl<'a> AttributeOptions<'a> {
             hashmap,
             others_to_keep,
             derives,
+            // derive_all,
             cfg_feature,
         };
         atts.validate(att_location)?;

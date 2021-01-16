@@ -78,8 +78,8 @@
 //! Renames the struct by removing the string from the end of the struct identifier.
 //! #### `#[designal(trim_end_all = "Postfix")]`
 //! Renames the struct by removing the string from the end of the struct identifier and also renames any field types that end with the same postfix. If a field doesn't end with the postfix it is left as is; if the field has its own renamer that will take precedence.
-//! #### `#[designal(derive = "Debug")]`
-//! Adds a derive attribute to the generated struct.
+// #### `#[designal(derive = "Debug")]`
+// Adds a derive attribute to the generated struct. Can accept a list of csv values `#[designal(derive = "Serialize, Deserialize, Debug, Default")]`; be used multiple times; or like`#[designal(derive = "Debug", derive = "PartialEq")]`.
 //! #### `#[designal(cfg_feature = "your_feature")]`
 //! Adds a `#[cfg(feature = "your_feature")]` attribute to the generated struct.
 //! #### `#[designal(keep_rc)]`

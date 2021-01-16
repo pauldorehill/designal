@@ -204,23 +204,55 @@ impl<'a> ReturnType<'a> {
             quote! { #(#xs),* }
         };
         let derives = struct_level_atts.derives.as_ref().map(|xs| {
-            quote! { #[derive(#(#xs),*)] }
+            let tokens: Result<Vec<TokenStream>> = xs
+                .iter()
+                .map(|v| match syn::parse_str::<Ident>(&v.0) {
+                    Ok(ident) => Ok(quote! {#ident}),
+                    Err(_) => match syn::parse_str::<Path>(&v.0) {
+                        Ok(path) => Ok(quote! {#path}),
+                        Err(_) => Err(Error::new(
+                            v.1,
+                            format!("Could not parse `{}` as a `Path` or `Ident`", v.0),
+                        )),
+                    },
+                })
+                .collect();
+            tokens.map(|t| quote! { #[derive(#(#t),*)] })
         });
         let cfg = struct_level_atts
             .cfg_feature
             .as_ref()
             .map(|xs| xs.iter().map(|v| quote! { #[cfg(feature = #v)] }).collect());
-        let s = Self {
-            vis: &input.vis,
-            name,
-            fields,
-            attributes: &struct_level_atts.others_to_keep,
-            derives,
-            cfg,
-            naming,
-            generics: &input.generics,
-        };
-        Ok(s)
+
+        match derives {
+            Some(Ok(derives)) => {
+                let s = Self {
+                    vis: &input.vis,
+                    name,
+                    fields,
+                    attributes: &struct_level_atts.others_to_keep,
+                    derives: Some(derives),
+                    cfg,
+                    naming,
+                    generics: &input.generics,
+                };
+                Ok(s)
+            }
+            Some(Err(e)) => Err(e),
+            None => {
+                let s = Self {
+                    vis: &input.vis,
+                    name,
+                    fields,
+                    attributes: &struct_level_atts.others_to_keep,
+                    derives: None,
+                    cfg,
+                    naming,
+                    generics: &input.generics,
+                };
+                Ok(s)
+            }
+        }
     }
 
     fn build(&self) -> Result<TokenStream> {

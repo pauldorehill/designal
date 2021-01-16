@@ -4,7 +4,7 @@ error: Ignore is not valid at the container level
 5 | #[designal(ignore)]
   |            ^^^^^^
 
-error: You should only ignore once
+error: You should only `ignore` once
   --> $DIR/ignore.rs:12:16
    |
 12 |     #[designal(ignore)]

@@ -263,6 +263,7 @@ fn trim_rc_rc() {
     #[derive(Designal)]
     #[designal(trim_end = "Bean")]
     struct HumanBean {
+        #[allow(clippy::clippy::redundant_allocation)]
         taste: Rc<Rc<String>>,
     }
     let _ = Human {
@@ -554,6 +555,27 @@ fn derive_vec_attributes_csv() {
         taste: u8,
     }
 }
+
+fn derive_full_path() {
+    // use find_me::FindMe;
+    #[derive(designal::Designal)]
+    #[designal(trim_end = "Bean")]
+    #[designal(derive = "std::default::Default, Debug")]
+    pub struct HumanBean {
+        taste: u8,
+    }
+
+    let _ = Human::default();
+}
+
+// fn derive_all() {
+//     #[derive(Designal)]
+//     #[designal(trim_end = "Bean")]
+//     #[designal(derive_all)]
+//     pub struct HumanBean {
+//         taste: u8,
+//     }
+// }
 
 fn generics() {
     #[derive(Designal)]
