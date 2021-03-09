@@ -22,10 +22,9 @@ fn make_final_type(
             ));
         }
         match args.first().unwrap() {
-            syn::GenericArgument::Type(t) => match t {
-                syn::Type::Path(p) => remove_type_wrappers(&p.path, atts, naming),
-                _ => Ok(quote! {#args}),
-            },
+            syn::GenericArgument::Type(syn::Type::Path(p)) => {
+                remove_type_wrappers(&p.path, atts, naming)
+            }
             _ => Ok(quote! {#args}),
         }
     // MutableBTreeMap
@@ -87,31 +86,18 @@ fn remove_type_wrappers(
                 match &s.arguments {
                     PathArguments::AngleBracketed(angle_args) => {
                         make_final_type(angle_args, atts, naming)
-                        // I think for good hygine this must always be the full path
-                        // .map(|args| match atts.hashmap {
-                        //     Some(_) => quote! { std::collections::HashMap<#args> },
-                        //     None => quote! { std::collections::BTreeMap<#args> },
-                        // })
                     }
                     _ => unreachable!(),
                 }
             // This is the final path it comes down after recursion
             } else {
-                // Ok(quote! { #path })
                 match &atts.renamer {
                     Some(renamer) => {
                         let final_ty_name =
                             renamer.make_new_name(&s.ident, AttributeLocation::Field(naming))?;
-
                         // Need to add back any further types in <T> after the name. eg. Option<i32>
                         let args = &s.arguments;
                         Ok(quote! { #final_ty_name#args})
-                        // match &s.arguments {
-                        //     PathArguments::AngleBracketed(angle_args) => {
-                        //         Ok(quote! { #final_ty_name#angle_args})
-                        //     }
-                        //     _ => Ok(quote! { #final_ty_name }),
-                        // }
                     }
                     None => Ok(quote! { #path }),
                 }
@@ -126,13 +112,22 @@ fn clean_field(
     atts: &AttributeOptions,
     final_type: Option<Result<TokenStream>>,
 ) -> Result<TokenStream> {
-    let new_atts = &atts.others_to_keep;
+    let current_atts = &atts.current_attributes;
     let vis = &field.vis;
     let default_ty = &field.ty;
     let ty = final_type.unwrap_or_else(|| Ok(quote! { #default_ty }))?;
+    let designal_atts = &atts.designal_attributes;
     match &field.ident {
-        Some(name) => Ok(quote! { #(#new_atts)* #vis #name: #ty }),
-        None => Ok(quote! { #(#new_atts)* #vis #ty }),
+        Some(name) => Ok(quote! {
+            #(#current_atts)*
+            #(#designal_atts)*
+            #vis #name: #ty
+        }),
+        None => Ok(quote! {
+            #(#current_atts)*
+            #(#designal_atts)*
+            #vis #ty
+        }),
     }
 }
 
@@ -175,14 +170,13 @@ impl Naming {
     }
 }
 
-//TODO: Tidy up these?
+//TODO: Tidy up these? Should it even be a reference?
 pub(crate) struct ReturnType<'a> {
     vis: &'a Visibility,
     name: Ident,
     fields: TokenStream,
-    attributes: &'a Vec<&'a Attribute>,
-    derives: Option<TokenStream>,
-    cfg: Option<TokenStream>,
+    existing_attributes: &'a Vec<&'a Attribute>,
+    designal_attributes: &'a Vec<TokenStream>,
     naming: Naming,
     generics: &'a Generics,
 }
@@ -203,73 +197,31 @@ impl<'a> ReturnType<'a> {
                 .collect::<Result<Vec<TokenStream>>>()?;
             quote! { #(#xs),* }
         };
-        let derives = struct_level_atts.derives.as_ref().map(|xs| {
-            let tokens: Result<Vec<TokenStream>> = xs
-                .iter()
-                .map(|v| match syn::parse_str::<Ident>(&v.0) {
-                    Ok(ident) => Ok(quote! {#ident}),
-                    Err(_) => match syn::parse_str::<Path>(&v.0) {
-                        Ok(path) => Ok(quote! {#path}),
-                        Err(_) => Err(Error::new(
-                            v.1,
-                            format!("Could not parse `{}` as a `Path` or `Ident`", v.0),
-                        )),
-                    },
-                })
-                .collect();
-            tokens.map(|t| quote! { #[derive(#(#t),*)] })
-        });
-        let cfg = struct_level_atts
-            .cfg_feature
-            .as_ref()
-            .map(|xs| xs.iter().map(|v| quote! { #[cfg(feature = #v)] }).collect());
 
-        match derives {
-            Some(Ok(derives)) => {
-                let s = Self {
-                    vis: &input.vis,
-                    name,
-                    fields,
-                    attributes: &struct_level_atts.others_to_keep,
-                    derives: Some(derives),
-                    cfg,
-                    naming,
-                    generics: &input.generics,
-                };
-                Ok(s)
-            }
-            Some(Err(e)) => Err(e),
-            None => {
-                let s = Self {
-                    vis: &input.vis,
-                    name,
-                    fields,
-                    attributes: &struct_level_atts.others_to_keep,
-                    derives: None,
-                    cfg,
-                    naming,
-                    generics: &input.generics,
-                };
-                Ok(s)
-            }
-        }
+        Ok(Self {
+            vis: &input.vis,
+            name,
+            fields,
+            existing_attributes: &struct_level_atts.current_attributes,
+            naming,
+            generics: &input.generics,
+            designal_attributes: &struct_level_atts.designal_attributes,
+        })
     }
 
-    fn build(&self) -> Result<TokenStream> {
+    fn build(&self) -> TokenStream {
         let name = &self.name;
         let fields = &self.fields;
         let vis = self.vis;
-        let atts = self.attributes;
-        let derives = &self.derives;
-        let cfg = &self.cfg;
+        let atts = self.existing_attributes;
         let generics = self.generics;
         let wher = &self.generics.where_clause;
-        let tokens = match self.naming {
+        let designal_atts = &self.designal_attributes;
+        match self.naming {
             Naming::Named => {
                 quote! {
-                    #cfg
-                    #derives
                     #(#atts)*
+                    #(#designal_atts)*
                     #vis struct #name #generics
                     #wher {
                         #fields
@@ -278,15 +230,13 @@ impl<'a> ReturnType<'a> {
             }
             Naming::Unnamed => {
                 quote! {
-                    #cfg
-                    #derives
                     #(#atts)*
+                    #(#designal_atts)*
                     #vis struct #name #generics (#fields)
                     #wher;
                 }
             }
-        };
-        Ok(tokens)
+        }
     }
 
     fn rename(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
@@ -329,6 +279,6 @@ impl<'a> ReturnType<'a> {
                 "Unions are not yet supported",
             )),
         };
-        ty?.build()
+        Ok(ty?.build())
     }
 }

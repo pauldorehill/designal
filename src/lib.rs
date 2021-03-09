@@ -120,5 +120,6 @@ use syn::{parse_macro_input, DeriveInput};
 pub fn designal(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
     let tokens = ReturnType::parse_input(input).unwrap_or_else(|err| err.to_compile_error());
+    println!("{}", tokens);
     tokens.into()
 }

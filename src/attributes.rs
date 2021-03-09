@@ -1,12 +1,17 @@
 use crate::builder::Naming;
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
-use syn::{Attribute, Error, Ident, LitStr, Meta, MetaNameValue, NestedMeta, Result};
+use syn::parse::{Parse, ParseStream};
+use syn::{
+    punctuated::Punctuated, Attribute, Error, Ident, Meta, MetaNameValue, NestedMeta, Result, Token,
+};
 
 // TODO: Add attribute filter
 // TODO: Add attribute adder
 // TODO: Add generics, where, lifetimes filter
 
+// Derive macro can't see the other derives, so there is no way to automatically parse them on for the struct.
+// For a field it is possible
 enum AttributeType {
     Ignore(Span),
     Remove(Span),
@@ -20,10 +25,7 @@ enum AttributeType {
     KeepRc(Span),
     KeepArc(Span),
     HashMap(Span),
-    Derive(String, Span),
-    // Can't do for now since a derive macro doesn't have access to the derives?
-    // DeriveAll(Span),
-    CfgFeature(String, Span), //TODO: Is this worth it? Since will need the feature on the base struct to build the generated one? Easier to just not import?
+    Attributes(TokenStream),
 }
 
 impl AttributeType {
@@ -39,9 +41,6 @@ impl AttributeType {
     const KEEP_RC: &'static str = "keep_rc";
     const KEEP_ARC: &'static str = "keep_arc";
     const HASHMAP: &'static str = "hashmap";
-    const DERIVE: &'static str = "derive";
-    // const DERIVE_ALL: &'static str = "derive_all";
-    const CFG_FEATURE: &'static str = "cfg_feature";
 
     fn err_only_str(span: Span) -> Result<Self> {
         Err(Error::new(span, "Only string literals are allowed"))
@@ -82,6 +81,7 @@ impl AttributeType {
             Some(i) => {
                 let name = i.to_string();
                 let span = i.span();
+
                 match name.as_str() {
                     Self::RENAME => make(&name, &span, &Self::Rename),
                     Self::ADD_START => make(&name, &span, &Self::AddStart),
@@ -90,12 +90,6 @@ impl AttributeType {
                     Self::TRIM_START_ALL => make(&name, &span, &Self::TrimStartAll),
                     Self::TRIM_END => make(&name, &span, &Self::TrimEnd),
                     Self::TRIM_END_ALL => make(&name, &span, &Self::TrimEndAll),
-                    Self::DERIVE => make(&name, &span, &Self::Derive),
-                    Self::CFG_FEATURE => make(&name, &span, &Self::CfgFeature),
-                    // Self::DERIVE_ALL => Err(Error::new(
-                    //     i.span(),
-                    //     "Should be used #[designal(derive_all)` not `#[designal(derive_all = \"...\")`".to_string(),
-                    // )),
                     _ => Self::err_invalid_ident(&i),
                 }
             }
@@ -113,15 +107,9 @@ impl AttributeType {
                         Self::KEEP_RC => Ok(Self::KeepRc(i.span())),
                         Self::KEEP_ARC => Ok(Self::KeepArc(i.span())),
                         Self::HASHMAP => Ok(Self::HashMap(i.span())),
-                        // Self::DERIVE_ALL => Ok(Self::DeriveAll(i.span())),
-                        // These check if it is a valid attribute, but not formated in the right way
                         s if s == Self::RENAME || s == Self::ADD_START || s == Self::ADD_END || s == Self::TRIM_START || s == Self::TRIM_END => {
                             Err(Error::new(i.span(), format!("You need to provide a way to rename the struct like `{} = \"NoSignals\"", s)))
                         }
-                        s if s ==  Self::DERIVE || s == Self::CFG_FEATURE => Err(Error::new(
-                            i.span(),
-                            format!("{} must be formated like `{} = \"Your value\"`", i, s),
-                        )),
                         _ => Self::err_invalid_ident(i),
                     },
                     None => Self::err_invalid_option(path.segments[0].ident.span()),
@@ -261,10 +249,8 @@ pub(crate) struct AttributeOptions<'a> {
     pub(crate) keep_rc: Option<Span>,
     pub(crate) keep_arc: Option<Span>,
     pub(crate) hashmap: Option<Span>,
-    pub(crate) others_to_keep: Vec<&'a Attribute>,
-    pub(crate) derives: Option<Vec<(String, Span)>>,
-    // pub(crate) derive_all: Option<Span>,
-    pub(crate) cfg_feature: Option<Vec<LitStr>>, //TODO: Is this best?
+    pub(crate) current_attributes: Vec<&'a Attribute>,
+    pub(crate) designal_attributes: Vec<TokenStream>,
 }
 
 impl<'a> AttributeOptions<'a> {
@@ -293,7 +279,6 @@ impl<'a> AttributeOptions<'a> {
                 _ => (),
             }
         }
-
         self
     }
 
@@ -302,6 +287,36 @@ impl<'a> AttributeOptions<'a> {
     }
 
     fn get_designal_meta(att: &Attribute) -> Vec<Result<AttributeType>> {
+        struct AttributesAttribute {
+            _name: Ident,
+            _equals: Token!(=),
+            attribute: Punctuated<Vec<Attribute>, Token!(,)>,
+        }
+
+        impl Parse for AttributesAttribute {
+            fn parse(input: ParseStream) -> Result<Self> {
+                let name = input.parse::<Ident>().and_then(|x| {
+                    let s = "attribute";
+                    if x == s {
+                        Ok(x)
+                    } else {
+                        Err(syn::Error::new(
+                            x.span(),
+                            format!(
+                                "Designal only expects tokens in this form for use with `{} = #[atts]`",
+                                s
+                            ),
+                        ))
+                    }
+                });
+                Ok(AttributesAttribute {
+                    _name: name?,
+                    _equals: input.parse()?,
+                    attribute: input.parse_terminated(Attribute::parse_outer)?,
+                })
+            }
+        }
+
         match att.parse_meta() {
             Ok(meta) => match meta {
                 syn::Meta::List(meta_list) => {
@@ -315,21 +330,16 @@ impl<'a> AttributeOptions<'a> {
                     vec![Err(Error::new(nv.lit.span(), "Unsupported attribute type"))]
                 }
             },
-            Err(e) => vec![Err(e)],
+            Err(_) => match att.parse_args::<AttributesAttribute>() {
+                Ok(t) => t
+                    .attribute
+                    .iter()
+                    .map(|a| Ok(AttributeType::Attributes(quote::quote! { #(#a) *})))
+                    .collect(),
+                Err(e) => vec![Err(Error::new(e.span(), "Could not parse the attributes"))],
+            },
         }
     }
-
-    // TODO: This will remove all cfg, should it only do feature?
-    // fn remove_cfg_feature(att: &&Attribute) -> bool {
-    //     match att.path.get_ident() {
-    //         Some(i) => i.to_string() != "cfg",
-    //         None => false,
-    //     }
-    // }
-    // let others: Vec<&Attribute> = others
-    //     .into_iter()
-    //     .filter(Self::remove_cfg_feature)
-    //     .collect();
 
     // TODO: Avoid iterating twice?
     fn get_designal_attributes(
@@ -396,14 +406,6 @@ impl<'a> AttributeOptions<'a> {
                         Renamer::TrimEndAll(_, _) => e("end"),
                         _ => Ok(()),
                     }
-                } else if let Some(s) = &self.derives {
-                    // Will only be some if there is somethihng
-                    Err(Error::new(s[0].1, "You can't derive on a field"))
-                } else if let Some(s) = &self.cfg_feature {
-                    Err(Error::new(
-                        s[0].span(),
-                        "You can't use cfg_feature on a field",
-                    ))
                 } else {
                     Ok(())
                 }
@@ -411,30 +413,8 @@ impl<'a> AttributeOptions<'a> {
         }
     }
 
-    fn make_vec<T, F>(items: &mut Option<Vec<T>>, value: &str, span: Span, maker: F)
-    where
-        F: Fn(&str, Span) -> T,
-    {
-        match items {
-            Some(ref mut items) => {
-                // TODO: use syn::parse_str to give better error message
-                for name in value.split(',') {
-                    items.push(maker(&name.trim(), span));
-                }
-            }
-            None => {
-                *items = Some(
-                    value
-                        .split(',')
-                        .map(|name| maker(name.trim(), span))
-                        .collect(),
-                );
-            }
-        }
-    }
-
     pub(crate) fn new(atts: &'a [Attribute], att_location: AttributeLocation) -> Result<Self> {
-        let (designal_atts, others_to_keep) = Self::get_designal_attributes(atts)?;
+        let (designal_atts, current_attributes) = Self::get_designal_attributes(atts)?;
         let mut ignore: Option<Span> = None;
         let mut remove: Option<Span> = None;
         let mut rename: Option<Renamer> = None;
@@ -445,9 +425,7 @@ impl<'a> AttributeOptions<'a> {
         let mut keep_rc: Option<Span> = None;
         let mut keep_arc: Option<Span> = None;
         let mut hashmap: Option<Span> = None;
-        let mut derives: Option<Vec<(String, Span)>> = None;
-        // let mut derive_all: Option<Span> = None;
-        let mut cfg_feature: Option<Vec<LitStr>> = None;
+        let mut designal_attributes: Vec<TokenStream> = Vec::new();
 
         let set_span = |existing: &mut Option<Span>, name: &str, new_value: &Span| match existing {
             Some(_) => Err(Error::new(
@@ -504,14 +482,7 @@ impl<'a> AttributeOptions<'a> {
                 AttributeType::KeepRc(span) => set_span(&mut keep_rc, "keep_rc", &span)?,
                 AttributeType::KeepArc(span) => set_span(&mut keep_arc, "keep_arc", &span)?,
                 AttributeType::HashMap(span) => set_span(&mut hashmap, "hashmap", &span)?,
-                AttributeType::Derive(value, span) => {
-                    // This is a quick fix to allow parseing of fully qualified paths eg. std::default::Default
-                    Self::make_vec(&mut derives, &value, span, |n, v| (n.to_string(), v))
-                }
-                // AttributeType::DeriveAll(span) => set_span(&mut derive_all, "derive_all", &span)?,
-                AttributeType::CfgFeature(value, span) => {
-                    Self::make_vec(&mut cfg_feature, &value, span, LitStr::new)
-                }
+                AttributeType::Attributes(v) => designal_attributes.push(v),
             }
         }
 
@@ -538,10 +509,8 @@ impl<'a> AttributeOptions<'a> {
             keep_rc,
             keep_arc,
             hashmap,
-            others_to_keep,
-            derives,
-            // derive_all,
-            cfg_feature,
+            current_attributes,
+            designal_attributes,
         };
         atts.validate(att_location)?;
         Ok(atts)
