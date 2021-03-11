@@ -1,6 +1,6 @@
 [package]
 name = "designal"
-version = "0.3.2"
+version = "0.4.0"
 authors = ["Paul Dorehill"]
 edition = "2018"
 description = "Procedural macro for use with futures-signals"
@@ -11,13 +11,14 @@ categories = ["data-structures"]
 
 [dependencies]
 proc-macro2 = "1.0"
-syn = { version = "1.0", features = ["parsing", "derive"] }
+syn = { version = "1.0", features = ["parsing"] }
 # syn = { version = "1.0", features = ["extra-traits"] }
 quote = "1.0"
 
 [dev-dependencies]
 futures-signals = "0.3"
 trybuild = "1.0"
+# serde = { version = "1.0", features = ["derive", "rc"] }
 
 [lib]
 proc-macro = true

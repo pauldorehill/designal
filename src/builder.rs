@@ -3,8 +3,8 @@ use crate::attributes::*;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    AngleBracketedGenericArguments, Attribute, DataStruct, DeriveInput, Error, Field, Generics,
-    Ident, Path, PathArguments, Result, Visibility,
+    AngleBracketedGenericArguments, DataEnum, DataStruct, DeriveInput, Error, Field, Ident, Path,
+    PathArguments, Result,
 };
 
 fn make_final_type(
@@ -35,7 +35,7 @@ fn make_final_type(
                     (syn::Type::Path(key), syn::Type::Path(value)) => {
                         let key = remove_type_wrappers(&key.path, atts, naming)?;
                         let value = remove_type_wrappers(&value.path, atts, naming)?;
-                        // I think for good hygine this must always be the full path
+                        // For hygine this must always be the full path
                         match atts.hashmap {
                             Some(_) => Ok(quote! { std::collections::HashMap<#key, #value> }),
                             None => Ok(quote! { std::collections::BTreeMap<#key, #value> }),
@@ -163,122 +163,112 @@ pub(crate) enum Naming {
 
 impl Naming {
     pub(crate) fn is_unnamed(&self) -> bool {
-        match self {
-            Naming::Named => false,
-            Naming::Unnamed => true,
-        }
+        matches!(self, Self::Unnamed)
     }
 }
 
-//TODO: Tidy up these? Should it even be a reference?
-pub(crate) struct ReturnType<'a> {
-    vis: &'a Visibility,
+fn build_struct(
     name: Ident,
-    fields: TokenStream,
-    existing_attributes: &'a Vec<&'a Attribute>,
-    designal_attributes: &'a Vec<TokenStream>,
-    naming: Naming,
-    generics: &'a Generics,
+    data: &DataStruct,
+    input: &DeriveInput,
+    type_atts: &AttributeOptions,
+) -> Result<TokenStream> {
+    let naming = match data.fields {
+        syn::Fields::Named(_) => Ok(Naming::Named),
+        syn::Fields::Unnamed(_) => Ok(Naming::Unnamed),
+        syn::Fields::Unit => Err(Error::new(
+            input.ident.span(),
+            "Unit structs are not yet supported",
+        )),
+    }?;
+
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let wher = &input.generics.where_clause;
+    let atts = &type_atts.current_attributes;
+    let designal_atts = &type_atts.designal_attributes;
+    let fields = {
+        let xs = data
+            .fields
+            .iter()
+            .filter_map(|field| map_field(field, naming, &type_atts))
+            .collect::<Result<Vec<TokenStream>>>()?;
+        quote! { #(#xs),* }
+    };
+    Ok(match naming {
+        Naming::Named => {
+            quote! {
+                #(#atts)*
+                #(#designal_atts)*
+                #vis struct #name #generics
+                #wher {
+                    #fields
+                }
+            }
+        }
+        Naming::Unnamed => {
+            quote! {
+                #(#atts)*
+                #(#designal_atts)*
+                #vis struct #name #generics (#fields)
+                #wher;
+            }
+        }
+    })
 }
 
-impl<'a> ReturnType<'a> {
-    fn new(
-        name: Ident,
-        data_struct: &DataStruct,
-        input: &'a DeriveInput,
-        naming: Naming,
-        struct_level_atts: &'a AttributeOptions,
-    ) -> Result<Self> {
-        let fields = {
-            let xs = data_struct
-                .fields
-                .iter()
-                .filter_map(|field| map_field(field, naming, &struct_level_atts))
-                .collect::<Result<Vec<TokenStream>>>()?;
-            quote! { #(#xs),* }
-        };
+fn build_enum_variants(data: &DataEnum) -> Result<TokenStream> {
+    data.variants.iter().map(|_| {});
+    Ok(quote! {})
+}
 
-        Ok(Self {
-            vis: &input.vis,
-            name,
-            fields,
-            existing_attributes: &struct_level_atts.current_attributes,
-            naming,
-            generics: &input.generics,
-            designal_attributes: &struct_level_atts.designal_attributes,
-        })
-    }
-
-    fn build(&self) -> TokenStream {
-        let name = &self.name;
-        let fields = &self.fields;
-        let vis = self.vis;
-        let atts = self.existing_attributes;
-        let generics = self.generics;
-        let wher = &self.generics.where_clause;
-        let designal_atts = &self.designal_attributes;
-        match self.naming {
-            Naming::Named => {
-                quote! {
-                    #(#atts)*
-                    #(#designal_atts)*
-                    #vis struct #name #generics
-                    #wher {
-                        #fields
-                    }
-                }
-            }
-            Naming::Unnamed => {
-                quote! {
-                    #(#atts)*
-                    #(#designal_atts)*
-                    #vis struct #name #generics (#fields)
-                    #wher;
-                }
-            }
+fn build_enum(
+    name: Ident,
+    data: &DataEnum,
+    input: &DeriveInput,
+    type_atts: &AttributeOptions,
+) -> Result<TokenStream> {
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let wher = &input.generics.where_clause;
+    let atts = &type_atts.current_attributes;
+    let designal_atts = &type_atts.designal_attributes;
+    let variants = build_enum_variants(&data)?;
+    Ok(quote! {
+        #(#atts)*
+        #(#designal_atts)*
+        #vis enum #name #generics
+        #wher {
+            #variants
         }
-    }
+    })
+}
 
-    fn rename(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
-        // Safe to unwrap since is checked in validation of attributes
-        let renamer = attr.renamer.as_ref().unwrap();
-        let name = renamer.make_new_name(&ident, AttributeLocation::Struct(ident.span()))?;
-        if name != *ident {
-            Ok(name)
-        } else {
-            Err(Error::new(
-                *renamer.span(),
-                "Can't rename to the same name as the struct",
-            ))
-        }
+fn rename(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
+    // Safe to unwrap since is checked in validation of attributes
+    let renamer = attr.renamer.as_ref().unwrap();
+    let name = renamer.make_new_name(&ident, AttributeLocation::Struct(ident.span()))?;
+    if name != *ident {
+        Ok(name)
+    } else {
+        Err(Error::new(
+            *renamer.span(),
+            "Can't rename to the same name as the struct",
+        ))
     }
+}
 
-    pub(crate) fn parse_input(input: DeriveInput) -> Result<TokenStream> {
-        let struct_atts =
-            AttributeOptions::new(&input.attrs, AttributeLocation::Struct(input.ident.span()))?;
-        let name = Self::rename(&input.ident, &struct_atts)?;
-        let ty = match &input.data {
-            syn::Data::Struct(s) => match &s.fields {
-                syn::Fields::Named(_) => {
-                    ReturnType::new(name, s, &input, Naming::Named, &struct_atts)
-                }
-                syn::Fields::Unnamed(_) => {
-                    ReturnType::new(name, s, &input, Naming::Unnamed, &struct_atts)
-                }
-                syn::Fields::Unit => Err(Error::new(
-                    input.ident.span(),
-                    "Unit structs are not supported",
-                )),
-            },
-            syn::Data::Enum(_) => Err(Error::new(
-                input.ident.span(),
-                "Enums are not yet supported",
-            )),
-            syn::Data::Union(_) => Err(Error::new(
-                input.ident.span(),
-                "Unions are not yet supported",
-            )),
-        };
-        Ok(ty?.build())
-    }
+pub(crate) fn parse_input(input: DeriveInput) -> Result<TokenStream> {
+    let type_atts =
+        AttributeOptions::new(&input.attrs, AttributeLocation::Struct(input.ident.span()))?;
+    let name = rename(&input.ident, &type_atts)?;
+    let tokens = match &input.data {
+        syn::Data::Struct(data) => build_struct(name, data, &input, &type_atts),
+        syn::Data::Enum(data) => build_enum(name, data, &input, &type_atts),
+        syn::Data::Union(_) => Err(Error::new(
+            input.ident.span(),
+            "Unions are not yet supported",
+        )),
+    }?;
+    Ok(tokens)
 }

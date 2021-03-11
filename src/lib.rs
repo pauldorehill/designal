@@ -113,13 +113,88 @@
 
 mod attributes;
 mod builder;
-use builder::ReturnType;
+use std::{
+    fs::OpenOptions,
+    io::{Read, Write},
+    path::PathBuf,
+};
 use syn::{parse_macro_input, DeriveInput};
+
+/// This is used to check if the files should be generated from the derive calls
+const FILE_MESSAGE: &[u8] = "// Generated\n".as_bytes();
+const FILE_NAME: &str = "out.rs";
+
+/// Finds the output path & creates it if required
+fn output_path(make_dir_path: bool) -> Option<PathBuf> {
+    match std::env::var("CARGO_MANIFEST_DIR") {
+        Ok(root) => {
+            let mut path = PathBuf::from(root);
+            path.push("target/designal");
+            if make_dir_path {
+                std::fs::create_dir_all(&path).unwrap();
+            }
+            path.push(FILE_NAME);
+            Some(path)
+        }
+        Err(_) => None,
+    }
+}
+
+fn write_derive_to_file(tokens: &proc_macro2::TokenStream) {
+    if let Some(path) = output_path(false) {
+        if let Ok(mut file) = OpenOptions::new()
+            .write(true)
+            .append(true)
+            .read(true)
+            .open(&path)
+        {
+            let mut buf = [0; FILE_MESSAGE.len()];
+            match file.read_exact(&mut buf) {
+                Ok(_) => {
+                    if buf == FILE_MESSAGE {
+                        file.write_all(tokens.to_string().as_bytes()).unwrap();
+                    }
+                }
+                Err(_) => {
+                    if let Some(path) = path.parent() {
+                        std::fs::remove_dir_all(path).unwrap_or(());
+                    }
+                }
+            };
+        }
+    }
+}
+
+// This is an experimental feature to enabling writing the output to a file since can't know order of compilation
+// OUT_DIR not set, but CARGO_MANIFEST_DIR is
+// include!() can used to load generated files
+// It looks like modules are processed by the order of import
+// Can't do as a attribute marco:
+// non-inline modules in proc macro input are unstable see issue #54727 <https://github.com/rust-lang/rust/issues/54727
+// This is feature gated https://docs.rs/proc-macro2/1.0.24/proc_macro2/struct.Span.html#method.source_file so
+// can't find the current file from the derive macro
+
+/// This must be in the root `lib.rs` file and appear before any module imports that you want to write to the
+/// file. It creates a file `target/designal/out.rs` that has all the generated code in
+#[proc_macro]
+pub fn write_to_file(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    if let Some(path) = output_path(true) {
+        let mut file = std::fs::File::create(&path).unwrap_or_else(|_| {
+            panic!(
+                "Failed to create file for designal output at path: {:?}",
+                path
+            )
+        });
+        file.write_all(FILE_MESSAGE).unwrap()
+    }
+    item
+}
 
 #[proc_macro_derive(Designal, attributes(designal))]
 pub fn designal(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
-    let tokens = ReturnType::parse_input(input).unwrap_or_else(|err| err.to_compile_error());
-    println!("{}", tokens);
+    let tokens = builder::parse_input(input).unwrap_or_else(|err| err.to_compile_error());
+    // TODO: Return if want to write from the builder? / Split into its own macro?
+    write_derive_to_file(&tokens);
     tokens.into()
 }

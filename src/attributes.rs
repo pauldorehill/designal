@@ -41,6 +41,7 @@ impl AttributeType {
     const KEEP_RC: &'static str = "keep_rc";
     const KEEP_ARC: &'static str = "keep_arc";
     const HASHMAP: &'static str = "hashmap";
+    const ATTRIBUTE: &'static str = "attribute";
 
     fn err_only_str(span: Span) -> Result<Self> {
         Err(Error::new(span, "Only string literals are allowed"))
@@ -296,15 +297,15 @@ impl<'a> AttributeOptions<'a> {
         impl Parse for AttributesAttribute {
             fn parse(input: ParseStream) -> Result<Self> {
                 let name = input.parse::<Ident>().and_then(|x| {
-                    let s = "attribute";
-                    if x == s {
+
+                    if x == AttributeType::ATTRIBUTE {
                         Ok(x)
                     } else {
                         Err(syn::Error::new(
                             x.span(),
                             format!(
                                 "Designal only expects tokens in this form for use with `{} = #[atts]`",
-                                s
+                                AttributeType::ATTRIBUTE
                             ),
                         ))
                     }
@@ -317,6 +318,8 @@ impl<'a> AttributeOptions<'a> {
             }
         }
 
+        // TODO: Allow combining of two types
+        // #[designal(trim_end = "Signal", attribute = #[derive(Debug)])]
         match att.parse_meta() {
             Ok(meta) => match meta {
                 syn::Meta::List(meta_list) => {
