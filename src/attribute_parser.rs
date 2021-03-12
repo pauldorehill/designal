@@ -6,7 +6,7 @@ use syn::{
     Attribute, Error, Meta, Result, Token,
 };
 struct AttributesAttribute {
-    _name: Ident,
+    name: Ident,
     _equals: Token!(=),
     attribute: Punctuated<Vec<Attribute>, Token!(,)>,
 }
@@ -14,7 +14,7 @@ struct AttributesAttribute {
 impl Parse for AttributesAttribute {
     fn parse(input: ParseStream) -> Result<AttributesAttribute> {
         let name = input.parse::<Ident>().and_then(|x| {
-            if x == AttributeType::ATTRIBUTE {
+            if x == AttributeType::ATTRIBUTE || x == AttributeType::ATTRIBUTE_REPLACE {
                 Ok(x)
             } else {
                 Err(syn::Error::new(
@@ -27,7 +27,7 @@ impl Parse for AttributesAttribute {
             }
         });
         Ok(AttributesAttribute {
-            _name: name?,
+            name: name?,
             _equals: input.parse()?,
             attribute: input.parse_terminated(Attribute::parse_outer)?,
         })
@@ -51,15 +51,23 @@ pub(crate) fn parse(att: &Attribute) -> Vec<Result<AttributeType>> {
                 vec![Err(Error::new(nv.lit.span(), "Unsupported attribute type"))]
             }
         },
-        Err(orig) => match att.parse_args::<AttributesAttribute>() {
+        // TODO: Can i combine the span errors here?
+        Err(_) => match att.parse_args::<AttributesAttribute>() {
             Ok(t) => t
                 .attribute
                 .iter()
-                .map(|a| Ok(AttributeType::Attributes(quote::quote! { #(#a) *})))
+                .map(|a| {
+                    // Validated earlier in the parsing
+                    if t.name == AttributeType::ATTRIBUTE {
+                        Ok(AttributeType::Attributes(quote::quote! { #(#a) *}))
+                    } else {
+                        Ok(AttributeType::AttributesReplace(quote::quote! { #(#a) *}))
+                    }
+                })
                 .collect(),
-            Err(_) => {
+            Err(e) => {
                 vec![Err(Error::new(
-                    orig.span(),
+                    e.span(),
                     "Could not parse Designal the attributes",
                 ))]
             }

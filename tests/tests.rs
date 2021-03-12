@@ -1,10 +1,10 @@
 #![allow(dead_code)]
-designal::start_write_to_file!();
+
 use designal::Designal;
 use futures_signals::signal::Mutable;
 use futures_signals::signal_map::MutableBTreeMap;
 use futures_signals::signal_vec::MutableVec;
-// use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::{rc::Rc, sync::Arc};
 
@@ -15,10 +15,11 @@ fn test_should_fail() {
 }
 
 fn rename_struct() {
-    #[derive(Designal)]
+    #[derive(Designal, Debug)]
     #[designal(rename = "Giant")]
     struct HumanBean();
     let _ = Giant();
+    println!("{:?}", HumanBean());
 }
 
 fn unit_struct() {
@@ -661,7 +662,6 @@ fn nested_types() {
     };
 }
 
-#[test]
 fn multiple_attributes() {
     #[derive(Designal)]
     #[designal(trim_end = "Bean")]
@@ -686,6 +686,32 @@ fn multiple_attributes() {
     };
 }
 
+// TODO: Test the replacing
+designal::start_write_to_file!();
+#[test]
+fn replace_atts() {
+    #[derive(Designal, Deserialize, Serialize)]
+    #[designal(trim_end = "Bean")]
+    #[designal(attribute_replace =
+        #[derive(Debug)],
+        #[derive(Deserialize, Serialize)],
+        #[serde(rename = "RenamedBean")]
+    )]
+    #[serde(rename = "RenamedBean")]
+    struct HumanBean {
+        #[designal(attribute_replace = #[serde(rename = "designal_new_name")])]
+        #[serde(rename = "new_name")]
+        taste: String,
+    };
+
+    let json = serde_json::json! {
+        {
+            "designal_new_name": "hello"
+        }
+    };
+    assert!(serde_json::from_value::<Human>(json).is_ok());
+}
+
 // fn attributes_with_others() {
 //     #[derive(Designal)]
 //     #[designal(attribute = #[derive(Debug)], trim_end = "Bean")]
@@ -697,7 +723,7 @@ fn multiple_attributes() {
 //         taste: String::new(),
 //     };
 // }
-
+designal::stop_write_to_file!();
 fn basic_enum_num_testing() {
     #[derive(Designal)]
     #[designal(trim_end = "Signal")]

@@ -124,20 +124,25 @@ fn clean_field(
     atts: &AttributeOptions,
     final_type: Option<Result<TokenStream>>,
 ) -> Result<TokenStream> {
-    let current_atts = &atts.current_attributes;
     let vis = &field.vis;
     let default_ty = &field.ty;
     let ty = final_type.unwrap_or_else(|| Ok(quote! { #default_ty }))?;
-    let designal_atts = &atts.designal_attributes;
+    let (designal_atts, replace_atts) = &atts.designal_attributes;
+    let xs = vec![];
+    let current_atts = if *replace_atts {
+        &xs
+    } else {
+        &atts.current_attributes
+    };
     match &field.ident {
         Some(name) => Ok(quote! {
-            #(#current_atts)*
             #(#designal_atts)*
+            #(#current_atts)*
             #vis #name: #ty
         }),
         None => Ok(quote! {
-            #(#current_atts)*
             #(#designal_atts)*
+            #(#current_atts)*
             #vis #ty
         }),
     }
@@ -180,8 +185,8 @@ fn build_struct(
     let vis = &input.vis;
     let generics = &input.generics;
     let wher = &input.generics.where_clause;
-    let atts = &type_atts.current_attributes;
-    let designal_atts = &type_atts.designal_attributes;
+    // TODO: Should just push the others on here & DRY this code..
+    let (designal_atts, replace_atts) = &type_atts.designal_attributes;
     let fields = {
         let xs = data
             .fields
@@ -190,11 +195,17 @@ fn build_struct(
             .collect::<Result<Vec<TokenStream>>>()?;
         quote! { #(#xs),* }
     };
+    let xs = vec![];
+    let current_atts = if *replace_atts {
+        &xs
+    } else {
+        &type_atts.current_attributes
+    };
     Ok(match naming {
         Naming::Named => {
             quote! {
-                #(#atts)*
                 #(#designal_atts)*
+                #(#current_atts)*
                 #vis struct #name #generics
                 #wher {
                     #fields
@@ -203,8 +214,8 @@ fn build_struct(
         }
         Naming::Unnamed => {
             quote! {
-                #(#atts)*
                 #(#designal_atts)*
+                #(#current_atts)*
                 #vis struct #name #generics (#fields)
                 #wher;
             }
@@ -257,8 +268,7 @@ fn build_enum(
     let vis = &input.vis;
     let generics = &input.generics;
     let wher = &input.generics.where_clause;
-    let atts = &type_atts.current_attributes;
-    let designal_atts = &type_atts.designal_attributes;
+    let (designal_atts, replace_atts) = &type_atts.designal_attributes;
     let variants = {
         let xs = data
             .variants
@@ -269,9 +279,15 @@ fn build_enum(
             #(#xs)*
         }
     };
+    let xs = vec![];
+    let current_atts = if *replace_atts {
+        &xs
+    } else {
+        &type_atts.current_attributes
+    };
     Ok(quote! {
-        #(#atts)*
         #(#designal_atts)*
+        #(#current_atts)*
         #vis enum #name #generics
         #wher {
             #variants

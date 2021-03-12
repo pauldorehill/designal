@@ -1,8 +1,8 @@
 error: Could not parse Designal the attributes
- --> $DIR/format.rs:4:32
+ --> $DIR/format.rs:4:12
   |
 4 | #[designal(rename = "NewBean", ,)]
-  |                                ^
+  |            ^^^^^^
 
 error: Unrecognized attribute identifier option: snozzcumber
  --> $DIR/format.rs:8:12

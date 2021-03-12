@@ -1,0 +1,11 @@
+error: duplicate serde attribute `rename`
+  --> $DIR/attribute.rs:10:9
+   |
+10 | #[serde(rename = "RenamedBean")]
+   |         ^^^^^^
+
+error: duplicate serde attribute `rename`
+  --> $DIR/attribute.rs:13:13
+   |
+13 |     #[serde(rename = "new_name")]
+   |             ^^^^^^

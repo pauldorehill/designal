@@ -23,6 +23,7 @@ pub(crate) enum AttributeType {
     KeepArc(Span),
     HashMap(Span),
     Attributes(TokenStream),
+    AttributesReplace(TokenStream),
 }
 
 impl AttributeType {
@@ -39,6 +40,7 @@ impl AttributeType {
     const KEEP_ARC: &'static str = "keep_arc";
     const HASHMAP: &'static str = "hashmap";
     pub(crate) const ATTRIBUTE: &'static str = "attribute";
+    pub(crate) const ATTRIBUTE_REPLACE: &'static str = "attribute_replace";
 
     fn err_only_str(span: Span) -> Result<Self> {
         Err(Error::new(span, "Only string literals are allowed"))
@@ -248,7 +250,7 @@ pub(crate) struct AttributeOptions<'a> {
     pub(crate) keep_arc: Option<Span>,
     pub(crate) hashmap: Option<Span>,
     pub(crate) current_attributes: Vec<&'a Attribute>,
-    pub(crate) designal_attributes: Vec<TokenStream>,
+    pub(crate) designal_attributes: (Vec<TokenStream>, bool),
 }
 
 impl<'a> AttributeOptions<'a> {
@@ -369,7 +371,7 @@ impl<'a> AttributeOptions<'a> {
         let mut keep_rc: Option<Span> = None;
         let mut keep_arc: Option<Span> = None;
         let mut hashmap: Option<Span> = None;
-        let mut designal_attributes: Vec<TokenStream> = Vec::new();
+        let mut designal_attributes: (Vec<TokenStream>, bool) = (Vec::new(), false);
 
         let set_span = |existing: &mut Option<Span>, name: &str, new_value: &Span| match existing {
             Some(_) => Err(Error::new(
@@ -426,7 +428,11 @@ impl<'a> AttributeOptions<'a> {
                 AttributeType::KeepRc(span) => set_span(&mut keep_rc, "keep_rc", &span)?,
                 AttributeType::KeepArc(span) => set_span(&mut keep_arc, "keep_arc", &span)?,
                 AttributeType::HashMap(span) => set_span(&mut hashmap, "hashmap", &span)?,
-                AttributeType::Attributes(v) => designal_attributes.push(v),
+                AttributeType::Attributes(v) => designal_attributes.0.push(v),
+                AttributeType::AttributesReplace(v) => {
+                    designal_attributes.0.push(v);
+                    designal_attributes.1 = true;
+                }
             }
         }
 

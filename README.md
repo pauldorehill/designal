@@ -113,6 +113,9 @@ struct A;
 ```
 Due to `derive` not having access to other attbributes on struct no of the original struct's attributes can be passed on.
 
+#### `#[designal(attribute_replace = #[..attribute..])]`
+Same a `attribute` but completely replaces any other attributes
+
 ## Field Attributes
 
 #### `#[designal(rename = "NewName")]`
@@ -153,3 +156,6 @@ struct A {
     field: i32
 }
 ```
+
+#### `#[designal(attribute_replace = #[..attribute..])]`
+Same a `attribute` but completely replaces any other attributes
