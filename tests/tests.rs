@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-
+designal::start_write_to_file!();
 use designal::Designal;
 use futures_signals::signal::Mutable;
 use futures_signals::signal_map::MutableBTreeMap;
@@ -19,6 +19,13 @@ fn rename_struct() {
     #[designal(rename = "Giant")]
     struct HumanBean();
     let _ = Giant();
+}
+
+fn unit_struct() {
+    #[derive(Designal)]
+    #[designal(rename = "Giant")]
+    struct HumanBean;
+    let _ = Giant;
 }
 
 fn rename_struct_named_fields() {
@@ -622,7 +629,6 @@ fn nested_types() {
     // TODO: Code to parse both types?
     #[derive(Designal)]
     #[designal(trim_end = "Signal")]
-    // #[designal(trim_end = "Signal", derive = "Debug")]
     #[designal(attribute = #[derive(Debug)])]
     struct TasteSignal {
         salt: Mutable<u32>,
@@ -634,7 +640,6 @@ fn nested_types() {
 
     #[derive(Designal)]
     #[designal(trim_end = "Signal")]
-    // #[designal(trim_end = "Signal", derive = "Debug")]
     #[designal(attribute = #[derive(Debug)])]
     struct HumanSignal {
         #[designal(trim_end = "Signal")]
@@ -658,53 +663,59 @@ fn nested_types() {
 
 #[test]
 fn multiple_attributes() {
-    // #[derive(Designal, Deserialize, Serialize)]
     #[derive(Designal)]
-    // #[designal(trim_end = "Bean", derive = "Debug, Default, Clone")]
     #[designal(trim_end = "Bean")]
     #[designal(attribute =
-        // #[serde(default, skip_serializing_if = "Option::is_none")],
         #[derive(Debug)],
-        #[cfg(feature = "client")]
+        #[derive(Clone)],
+        // #[cfg(feature = "client")]
+    )]
+    #[designal(attribute =
+        #[derive(Default)],
     )]
     struct HumanBean {
         #[designal(attribute =
-            // #[serde(default, skip_serializing_if = "Option::is_none")],
-            #[derive(Debug)],
             #[cfg(feature = "client")]
         )]
-        // #[serde(default)]
         taste: String,
     };
 
-    #[derive(Debug)]
-    struct Flavours(Vec<String>);
-
-    // #[cfg(feature = "client")]
-    // let _ = Human();
-}
-
-#[serde(default, skip_serializing_if = "Option::is_none")]
-#[derive(Debug)]
-#[cfg(feature = "client")]
-struct Human {
-    #[serde(default)]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[derive(Debug)]
     #[cfg(feature = "client")]
-    taste: String,
+    let _: Human = Human {
+        taste: String::new(),
+    };
 }
+
+// fn attributes_with_others() {
+//     #[derive(Designal)]
+//     #[designal(attribute = #[derive(Debug)], trim_end = "Bean")]
+//     struct HumanBean {
+//         taste: String,
+//     };
+
+//     let _: Human = Human {
+//         taste: String::new(),
+//     };
+// }
 
 fn basic_enum_num_testing() {
     #[derive(Designal)]
     #[designal(trim_end = "Signal")]
     enum GiantSignal {
+        // These are 'syn::Fields::Unit`
         BoneCruncher,
         FleshLumpEater,
     }
 
-    let _ = Giant::BoneCruncher;
-    let _ = Giant::FleshLumpEater;
+    let _: Giant = Giant::BoneCruncher;
+    let _: Giant = Giant::FleshLumpEater;
+}
+
+fn empty_enum() {
+    #[derive(Designal)]
+    #[designal(trim_start = "Human")]
+    enum HumanBean {}
+    let _: Bean = unreachable!();
 }
 
 // #[test]
@@ -726,12 +737,22 @@ fn basic_enum_with_struct_field() {
     struct MealSignal();
 
     #[derive(Designal)]
-    #[designal(trim_end = "Signal")]
+    #[designal(trim_end_all = "Signal")]
     enum GiantSignal {
+        // This is a `syn::Fields::Named`
+        GizzardGulper { name: i32 },
+        TheButcherBoy { name: Mutable<String> },
+        // This is a `syn::Fields::UnNamed`
         BoneCruncher(MealSignal),
-        FleshLumpEater(MealSignal),
+        MeatDripper(MealSignal, String),
+        FleshLumpEater(MealSignal, MealSignal),
     }
 
-    let _: Giant = Giant::BoneCruncher(MealSignal());
-    let _: Giant = Giant::FleshLumpEater(MealSignal());
+    let _: Giant = Giant::GizzardGulper { name: 3 };
+    let _: Giant = Giant::TheButcherBoy {
+        name: String::new(),
+    };
+    let _: Giant = Giant::BoneCruncher(Meal());
+    let _: Giant = Giant::MeatDripper(Meal(), String::new());
+    let _: Giant = Giant::FleshLumpEater(Meal(), Meal());
 }

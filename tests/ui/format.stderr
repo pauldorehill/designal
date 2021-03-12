@@ -1,4 +1,4 @@
-error: expected identifier or literal
+error: Could not parse Designal the attributes
  --> $DIR/format.rs:4:32
   |
 4 | #[designal(rename = "NewBean", ,)]

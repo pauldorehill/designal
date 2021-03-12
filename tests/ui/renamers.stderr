@@ -16,7 +16,7 @@ error: Only string literals are allowed
 11 | #[designal(rename = 2)]
    |                     ^
 
-error: expected literal
+error: Could not parse Designal the attributes
   --> $DIR/renamers.rs:15:21
    |
 15 | #[designal(rename = HumanBean)]

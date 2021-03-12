@@ -1,10 +1,7 @@
 use crate::builder::Naming;
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
-use syn::parse::{Parse, ParseStream};
-use syn::{
-    punctuated::Punctuated, Attribute, Error, Ident, Meta, MetaNameValue, NestedMeta, Result, Token,
-};
+use syn::{Attribute, Error, Ident, Meta, MetaNameValue, NestedMeta, Result};
 
 // TODO: Add attribute filter
 // TODO: Add attribute adder
@@ -12,7 +9,7 @@ use syn::{
 
 // Derive macro can't see the other derives, so there is no way to automatically parse them on for the struct.
 // For a field it is possible
-enum AttributeType {
+pub(crate) enum AttributeType {
     Ignore(Span),
     Remove(Span),
     Rename(String, Span),
@@ -41,7 +38,7 @@ impl AttributeType {
     const KEEP_RC: &'static str = "keep_rc";
     const KEEP_ARC: &'static str = "keep_arc";
     const HASHMAP: &'static str = "hashmap";
-    const ATTRIBUTE: &'static str = "attribute";
+    pub(crate) const ATTRIBUTE: &'static str = "attribute";
 
     fn err_only_str(span: Span) -> Result<Self> {
         Err(Error::new(span, "Only string literals are allowed"))
@@ -98,7 +95,7 @@ impl AttributeType {
         }
     }
 
-    fn new(meta: &NestedMeta) -> Result<Self> {
+    pub(crate) fn new(meta: &NestedMeta) -> Result<Self> {
         match meta {
             NestedMeta::Meta(meta) => match meta {
                 Meta::Path(path) => match path.get_ident() {
@@ -165,7 +162,7 @@ impl Renamer {
     pub fn make_new_name(&self, current: &Ident, att_location: AttributeLocation) -> Result<Ident> {
         let err_naming = |span: &Span, name: &str, remove: &str, msg: &str| {
             let location = match att_location {
-                AttributeLocation::Struct(_) => "struct",
+                AttributeLocation::Type(_) => "struct",
                 AttributeLocation::Field(_) => "field",
             };
             Err(Error::new(
@@ -190,7 +187,7 @@ impl Renamer {
                 let name = current.to_string();
                 let id = || Ok(format_ident!("{}", name.trim_start_matches(remove)));
                 match att_location {
-                    AttributeLocation::Struct(_) => {
+                    AttributeLocation::Type(_) => {
                         if name.starts_with(remove) {
                             id()
                         } else {
@@ -218,7 +215,7 @@ impl Renamer {
                 let name = current.to_string();
                 let id = || Ok(format_ident!("{}", name.trim_end_matches(remove)));
                 match att_location {
-                    AttributeLocation::Struct(_) => {
+                    AttributeLocation::Type(_) => {
                         if name.ends_with(remove) {
                             id()
                         } else {
@@ -239,7 +236,7 @@ impl Renamer {
 }
 
 pub(crate) enum AttributeLocation {
-    Struct(Span),
+    Type(Span),
     Field(Naming),
 }
 
@@ -258,24 +255,21 @@ impl<'a> AttributeOptions<'a> {
     /// Only want to merge in keep_rc, keep_arc, hashmap, trim_start_all, trim_end_all
     /// only update when the struct level is_some()
     // TODO: Do nothing if already some?
-    pub(crate) fn add_struct_level_to_field_level(
-        mut self,
-        struct_level: &AttributeOptions,
-    ) -> Self {
-        if struct_level.keep_rc.is_some() {
-            self.keep_rc = struct_level.keep_rc;
+    pub(crate) fn add_type_level_to_field_level(mut self, type_level: &AttributeOptions) -> Self {
+        if type_level.keep_rc.is_some() {
+            self.keep_rc = type_level.keep_rc;
         }
-        if struct_level.keep_arc.is_some() {
-            self.keep_arc = struct_level.keep_arc;
+        if type_level.keep_arc.is_some() {
+            self.keep_arc = type_level.keep_arc;
         }
-        if struct_level.hashmap.is_some() {
-            self.hashmap = struct_level.hashmap;
+        if type_level.hashmap.is_some() {
+            self.hashmap = type_level.hashmap;
         }
         // Struct is only applied if the field has no renamer
-        if let (None, Some(renamer)) = (&self.renamer, &struct_level.renamer) {
+        if let (None, Some(renamer)) = (&self.renamer, &type_level.renamer) {
             match renamer {
                 Renamer::TrimStartAll(_, _) | Renamer::TrimEndAll(_, _) => {
-                    self.renamer = struct_level.renamer.clone();
+                    self.renamer = type_level.renamer.clone();
                 }
                 _ => (),
             }
@@ -288,60 +282,7 @@ impl<'a> AttributeOptions<'a> {
     }
 
     fn get_designal_meta(att: &Attribute) -> Vec<Result<AttributeType>> {
-        struct AttributesAttribute {
-            _name: Ident,
-            _equals: Token!(=),
-            attribute: Punctuated<Vec<Attribute>, Token!(,)>,
-        }
-
-        impl Parse for AttributesAttribute {
-            fn parse(input: ParseStream) -> Result<Self> {
-                let name = input.parse::<Ident>().and_then(|x| {
-
-                    if x == AttributeType::ATTRIBUTE {
-                        Ok(x)
-                    } else {
-                        Err(syn::Error::new(
-                            x.span(),
-                            format!(
-                                "Designal only expects tokens in this form for use with `{} = #[atts]`",
-                                AttributeType::ATTRIBUTE
-                            ),
-                        ))
-                    }
-                });
-                Ok(AttributesAttribute {
-                    _name: name?,
-                    _equals: input.parse()?,
-                    attribute: input.parse_terminated(Attribute::parse_outer)?,
-                })
-            }
-        }
-
-        // TODO: Allow combining of two types
-        // #[designal(trim_end = "Signal", attribute = #[derive(Debug)])]
-        match att.parse_meta() {
-            Ok(meta) => match meta {
-                syn::Meta::List(meta_list) => {
-                    meta_list.nested.iter().map(AttributeType::new).collect()
-                }
-                Meta::Path(p) => vec![Err(Error::new(
-                    p.segments[0].ident.span(),
-                    "Unsupported attribute type",
-                ))],
-                Meta::NameValue(nv) => {
-                    vec![Err(Error::new(nv.lit.span(), "Unsupported attribute type"))]
-                }
-            },
-            Err(_) => match att.parse_args::<AttributesAttribute>() {
-                Ok(t) => t
-                    .attribute
-                    .iter()
-                    .map(|a| Ok(AttributeType::Attributes(quote::quote! { #(#a) *})))
-                    .collect(),
-                Err(e) => vec![Err(Error::new(e.span(), "Could not parse the attributes"))],
-            },
-        }
+        crate::attribute_parser::parse(att)
     }
 
     // TODO: Avoid iterating twice?
@@ -361,7 +302,7 @@ impl<'a> AttributeOptions<'a> {
     // TODO: Check struct derived against field? eg. if keep_rc etc.
     fn validate(&self, att_location: AttributeLocation) -> Result<()> {
         match att_location {
-            AttributeLocation::Struct(struct_span) => {
+            AttributeLocation::Type(struct_span) => {
                 if let Some(span) = self.remove {
                     Err(Error::new(
                         span,
@@ -417,7 +358,7 @@ impl<'a> AttributeOptions<'a> {
     }
 
     pub(crate) fn new(atts: &'a [Attribute], att_location: AttributeLocation) -> Result<Self> {
-        let (designal_atts, current_attributes) = Self::get_designal_attributes(atts)?;
+        let (d_atts, current_attributes) = Self::get_designal_attributes(atts)?;
         let mut ignore: Option<Span> = None;
         let mut remove: Option<Span> = None;
         let mut rename: Option<Renamer> = None;
@@ -453,7 +394,7 @@ impl<'a> AttributeOptions<'a> {
                 }
             };
 
-        for att in designal_atts {
+        for att in d_atts {
             match att {
                 AttributeType::Ignore(span) => set_span(&mut ignore, "ignore", &span)?,
                 AttributeType::Remove(span) => set_span(&mut remove, "remove", &span)?,

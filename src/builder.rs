@@ -3,9 +3,21 @@ use crate::attributes::*;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    AngleBracketedGenericArguments, DataEnum, DataStruct, DeriveInput, Error, Field, Ident, Path,
-    PathArguments, Result,
+    spanned::Spanned, AngleBracketedGenericArguments, DataEnum, DataStruct, DeriveInput, Error,
+    Field, Ident, Path, PathArguments, Result, Variant,
 };
+
+#[derive(Copy, Clone)]
+pub(crate) enum Naming {
+    Named,
+    Unnamed,
+}
+
+impl Naming {
+    pub(crate) fn is_unnamed(&self) -> bool {
+        matches!(self, Self::Unnamed)
+    }
+}
 
 fn make_final_type(
     angle_args: &AngleBracketedGenericArguments,
@@ -134,10 +146,10 @@ fn clean_field(
 fn map_field(
     field: &Field,
     naming: Naming,
-    struct_level_atts: &AttributeOptions,
+    type_atts: &AttributeOptions,
 ) -> Option<Result<TokenStream>> {
     let atts = match AttributeOptions::new(&field.attrs, AttributeLocation::Field(naming)) {
-        Ok(atts) => atts.add_struct_level_to_field_level(struct_level_atts),
+        Ok(atts) => atts.add_type_level_to_field_level(type_atts),
         Err(e) => return Some(Err(e)),
     };
     if atts.remove.is_some() {
@@ -155,18 +167,6 @@ fn map_field(
     }
 }
 
-#[derive(Copy, Clone)]
-pub(crate) enum Naming {
-    Named,
-    Unnamed,
-}
-
-impl Naming {
-    pub(crate) fn is_unnamed(&self) -> bool {
-        matches!(self, Self::Unnamed)
-    }
-}
-
 fn build_struct(
     name: Ident,
     data: &DataStruct,
@@ -174,14 +174,9 @@ fn build_struct(
     type_atts: &AttributeOptions,
 ) -> Result<TokenStream> {
     let naming = match data.fields {
-        syn::Fields::Named(_) => Ok(Naming::Named),
-        syn::Fields::Unnamed(_) => Ok(Naming::Unnamed),
-        syn::Fields::Unit => Err(Error::new(
-            input.ident.span(),
-            "Unit structs are not yet supported",
-        )),
-    }?;
-
+        syn::Fields::Named(_) => Naming::Named,
+        syn::Fields::Unnamed(_) | syn::Fields::Unit => Naming::Unnamed,
+    };
     let vis = &input.vis;
     let generics = &input.generics;
     let wher = &input.generics.where_clause;
@@ -217,9 +212,40 @@ fn build_struct(
     })
 }
 
-fn build_enum_variants(data: &DataEnum) -> Result<TokenStream> {
-    data.variants.iter().map(|_| {});
-    Ok(quote! {})
+fn map_enum_variant(variant: &Variant, type_atts: &AttributeOptions) -> Result<TokenStream> {
+    let ident = &variant.ident;
+    let disc = &variant.discriminant;
+    let atts = &variant.attrs;
+    let fields = if variant.fields.is_empty() {
+        quote! {}
+    } else {
+        let xs = variant
+            .fields
+            .iter()
+            // Enums must always be treated as Named for map_field
+            .filter_map(|field| map_field(field, Naming::Named, &type_atts))
+            .collect::<Result<Vec<TokenStream>>>()?;
+        match &variant.fields {
+            syn::Fields::Named(_) => {
+                quote! { {#(#xs),*} }
+            }
+            syn::Fields::Unnamed(_) | syn::Fields::Unit => {
+                quote! { (#(#xs),*) }
+            }
+        }
+    };
+
+    match disc {
+        Some(_) => Err(Error::new(
+            variant.span(),
+            "Discriminated variants are not yet implemented",
+        )),
+        None => Ok(quote! {
+            #(#atts)*
+            #ident
+            #fields,
+        }),
+    }
 }
 
 fn build_enum(
@@ -233,7 +259,16 @@ fn build_enum(
     let wher = &input.generics.where_clause;
     let atts = &type_atts.current_attributes;
     let designal_atts = &type_atts.designal_attributes;
-    let variants = build_enum_variants(&data)?;
+    let variants = {
+        let xs = data
+            .variants
+            .iter()
+            .map(|variant| map_enum_variant(variant, type_atts))
+            .collect::<Result<Vec<TokenStream>>>()?;
+        quote! {
+            #(#xs)*
+        }
+    };
     Ok(quote! {
         #(#atts)*
         #(#designal_atts)*
@@ -244,10 +279,10 @@ fn build_enum(
     })
 }
 
-fn rename(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
+fn rename_type(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
     // Safe to unwrap since is checked in validation of attributes
     let renamer = attr.renamer.as_ref().unwrap();
-    let name = renamer.make_new_name(&ident, AttributeLocation::Struct(ident.span()))?;
+    let name = renamer.make_new_name(&ident, AttributeLocation::Type(ident.span()))?;
     if name != *ident {
         Ok(name)
     } else {
@@ -260,8 +295,8 @@ fn rename(ident: &Ident, attr: &AttributeOptions) -> Result<Ident> {
 
 pub(crate) fn parse_input(input: DeriveInput) -> Result<TokenStream> {
     let type_atts =
-        AttributeOptions::new(&input.attrs, AttributeLocation::Struct(input.ident.span()))?;
-    let name = rename(&input.ident, &type_atts)?;
+        AttributeOptions::new(&input.attrs, AttributeLocation::Type(input.ident.span()))?;
+    let name = rename_type(&input.ident, &type_atts)?;
     let tokens = match &input.data {
         syn::Data::Struct(data) => build_struct(name, data, &input, &type_atts),
         syn::Data::Enum(data) => build_enum(name, data, &input, &type_atts),

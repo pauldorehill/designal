@@ -11,18 +11,20 @@
 //!
 //! See the [Container Attributes](#container-attributes) and [Field Attributes](#field-attributes) section for some configuration options.
 //!
-//! ```rust
+//! ```
 //! use designal::Designal;
 //! use futures_signals::signal::Mutable;
 //! use futures_signals::signal_vec::MutableVec;
 //! use std::rc::Rc;
 //!
 //! #[derive(Designal)]
-//! #[designal(trim_end = "Signal", derive = "Debug")]
+//! #[designal(trim_end = "Signal")]
+//! #[designal(attribute = #[derive(Debug)])]
 //! struct FlavoursSignal(MutableVec<String>);
 //!
 //! #[derive(Designal)]
-//! #[designal(trim_end = "Signal", derive = "Debug")]
+//! #[designal(trim_end = "Signal")]
+//! #[designal(attribute = #[derive(Debug)])]
 //! struct TasteSignal {
 //!     salt: Mutable<u32>,
 //!     sweet: Mutable<bool>,
@@ -32,7 +34,8 @@
 //! }
 //!
 //! #[derive(Designal)]
-//! #[designal(trim_end = "Signal", derive = "Debug")]
+//! #[designal(trim_end = "Signal")]
+//! #[designal(attribute = #[derive(Debug)])]
 //! struct HumanSignal {
 //!     #[designal(trim_end = "Signal")]
 //!     taste: Rc<TasteSignal>,
@@ -111,90 +114,81 @@
 //! #### `#[designal(hashmap)]`
 //! If the field is a `MutableBTreeMap<K, V>` returns it as a `HashMap<K, V>` rather than the default of `BTreeMap<K, V>`. If it is `MutableBTreeMap<K, ()>` returns it as a `HashSet<K>`.
 
+mod attribute_parser;
 mod attributes;
 mod builder;
+mod capture;
 use std::{
-    fs::OpenOptions,
+    fs::File,
     io::{Read, Write},
-    path::PathBuf,
 };
 use syn::{parse_macro_input, DeriveInput};
-
-/// This is used to check if the files should be generated from the derive calls
-const FILE_MESSAGE: &[u8] = "// Generated\n".as_bytes();
-const FILE_NAME: &str = "out.rs";
-
-/// Finds the output path & creates it if required
-fn output_path(make_dir_path: bool) -> Option<PathBuf> {
-    match std::env::var("CARGO_MANIFEST_DIR") {
-        Ok(root) => {
-            let mut path = PathBuf::from(root);
-            path.push("target/designal");
-            if make_dir_path {
-                std::fs::create_dir_all(&path).unwrap();
-            }
-            path.push(FILE_NAME);
-            Some(path)
-        }
-        Err(_) => None,
-    }
-}
-
-fn write_derive_to_file(tokens: &proc_macro2::TokenStream) {
-    if let Some(path) = output_path(false) {
-        if let Ok(mut file) = OpenOptions::new()
-            .write(true)
-            .append(true)
-            .read(true)
-            .open(&path)
-        {
-            let mut buf = [0; FILE_MESSAGE.len()];
-            match file.read_exact(&mut buf) {
-                Ok(_) => {
-                    if buf == FILE_MESSAGE {
-                        file.write_all(tokens.to_string().as_bytes()).unwrap();
-                    }
-                }
-                Err(_) => {
-                    if let Some(path) = path.parent() {
-                        std::fs::remove_dir_all(path).unwrap_or(());
-                    }
-                }
-            };
-        }
-    }
-}
-
-// This is an experimental feature to enabling writing the output to a file since can't know order of compilation
-// OUT_DIR not set, but CARGO_MANIFEST_DIR is
-// include!() can used to load generated files
-// It looks like modules are processed by the order of import
-// Can't do as a attribute marco:
-// non-inline modules in proc macro input are unstable see issue #54727 <https://github.com/rust-lang/rust/issues/54727
-// This is feature gated https://docs.rs/proc-macro2/1.0.24/proc_macro2/struct.Span.html#method.source_file so
-// can't find the current file from the derive macro
-
-/// This must be in the root `lib.rs` file and appear before any module imports that you want to write to the
-/// file. It creates a file `target/designal/out.rs` that has all the generated code in
-#[proc_macro]
-pub fn write_to_file(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    if let Some(path) = output_path(true) {
-        let mut file = std::fs::File::create(&path).unwrap_or_else(|_| {
-            panic!(
-                "Failed to create file for designal output at path: {:?}",
-                path
-            )
-        });
-        file.write_all(FILE_MESSAGE).unwrap()
-    }
-    item
-}
 
 #[proc_macro_derive(Designal, attributes(designal))]
 pub fn designal(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
     let tokens = builder::parse_input(input).unwrap_or_else(|err| err.to_compile_error());
-    // TODO: Return if want to write from the builder? / Split into its own macro?
-    write_derive_to_file(&tokens);
+    // TODO: Split into its own macro / option not to write?
+    let action = |mut file: File| file.write_all(tokens.to_string().as_bytes()).unwrap();
+    capture::edit_file(action);
     tokens.into()
+}
+
+// This is an experimental feature to enabling writing the output to a file since can't know order of compilation
+// OUT_DIR not set, but CARGO_MANIFEST_DIR is. `include!()` could be used to load generated files...
+// It looks like modules are processed by the order of import
+// Can't do as a attribute marco:
+// non-inline modules in proc macro input are unstable see issue #54727 <https://github.com/rust-lang/rust/issues/54727
+// Can't yet find the current file from the derive macro:
+// https://docs.rs/proc-macro2/1.0.24/proc_macro2/struct.Span.html#method.source_file
+
+/// Highly experimental and will change
+/// Creates a file `target/designal/out.rs` that has all the generated code in. Whenever this macro is
+/// called it truncates the output file and then allows any subsequent calls to `#[derive(Disignal)]` to
+/// write to the `out.rs` file. For example using in `lib.rs` like this
+/// ```compile_fail
+/// designal::write_to_file!();
+/// mod mod1;
+/// mod mod2;
+/// ```
+/// Both `mod1` & `mod2` would be written to the output.
+/// ```compile_fail
+/// mod mod1;
+/// designal::write_to_file!();
+/// mod mod2;
+/// ```
+/// Would mean only `mod2` was written to the output.
+/// ```compile_fail
+/// designal::write_to_file!();
+/// mod mod1;
+/// designal::write_to_file!();
+/// mod mod2;
+/// ```
+/// Would mean only `mod1` was written to the output and then truncated; then finally `mod2` would be
+/// written to the output.
+#[proc_macro]
+pub fn start_write_to_file(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    if let Some(path) = capture::output_path(true) {
+        let mut file = File::create(&path).unwrap_or_else(|_| {
+            panic!(
+                "Failed to create file for designal output at path: {:?}",
+                path
+            )
+        });
+        file.write_all(capture::FILE_MESSAGE).unwrap()
+    }
+    item
+}
+
+/// Manual flag to stop any further writes to the 'out.rs' file
+#[proc_macro]
+pub fn stop_write_to_file(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let action = |mut file: File| {
+        let mut buf = String::new();
+        file.read_to_string(&mut buf).unwrap();
+        file.set_len(0).unwrap();
+        file.write_all(buf.as_bytes()).unwrap();
+    };
+    capture::edit_file(action);
+    item
 }

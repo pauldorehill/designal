@@ -1,5 +1,0 @@
-error: You can't derive on a field
- --> $DIR/derives.rs:6:16
-  |
-6 |     #[designal(derive = "Debug")]
-  |                ^^^^^^

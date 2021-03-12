@@ -1,5 +1,0 @@
-error: You can't use cfg_feature on a field
- --> $DIR/cfg.rs:6:16
-  |
-6 |     #[designal(cfg_feature = "client")]
-  |                ^^^^^^^^^^^
